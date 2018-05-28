@@ -119,7 +119,7 @@ class PokemonSkill(MycroftSkill):
     def handle_pokemon_base_attack(self, message):
         self.do_pokemon_base(message, "attack")
 
-    @intent_handler(IntentBuilder("PokemonBaseHP").require("Health").optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseHP").require("HP").optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_attack(self, message):
         self.do_pokemon_base(message, "hp")
 
