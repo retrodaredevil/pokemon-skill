@@ -58,7 +58,7 @@ class PokemonSkill(MycroftSkill):
 
                 if name_index >= len(split_name):
                     break  # don't test more words than are in the pokemon's name
-            return sum(equalities) / len(split_name)
+            return sum(equalities)
 
         utterance = message.data["utterance"]
         split = split_word(utterance)
