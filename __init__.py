@@ -45,21 +45,21 @@ class PokemonSkill(MycroftSkill):
     def handle_pokemon_base_speed(self, message):
         self.do_pokemon_base(message, "speed")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("PokemonName").require("Special").require("Defense").optionally("Pokemon")
+    @intent_handler(IntentBuilder("PokemonBaseSpecialDefense").require("PokemonName").require("Special").require("Defense").optionally("Pokemon")
                     .optionally("Base"))
     def handle_pokemon_base_special_defense(self, message):
         self.do_pokemon_base(message, "special-defense")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("PokemonName").require("Special").require("Attack").optionally("Pokemon")
+    @intent_handler(IntentBuilder("PokemonBaseSpecialAttack").require("PokemonName").require("Special").require("Attack").optionally("Pokemon")
                     .optionally("Base"))
     def handle_pokemon_base_special_attack(self, message):
         self.do_pokemon_base(message, "special-attack")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("PokemonName").require("Defense").optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseDefense").require("PokemonName").require("Defense").optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_defense(self, message):
         self.do_pokemon_base(message, "defense")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("PokemonName").require("Attack").optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseAttack").require("PokemonName").require("Attack").optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_attack(self, message):
         self.do_pokemon_base(message, "attack")
 
