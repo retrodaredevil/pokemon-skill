@@ -56,7 +56,7 @@ class PokemonSkill(MycroftSkill):
                 elif name_index > 0:  # if this has already been appended to, break
                     break
 
-                if name_index + 1 >= len(split_name):
+                if name_index >= len(split_name):
                     break  # don't test more words than are in the pokemon's name
             return sum(equalities) / len(split_name)
 
@@ -66,11 +66,16 @@ class PokemonSkill(MycroftSkill):
         name = None
         alike = 0
 
+        i = 0
         for name_element in self.pokemon_names:
             amount = alike_amount(name_element)
             if amount > alike:
                 name = name_element
                 alike = amount
+
+            i += 1
+            if i >= 50:  # in early states of development, make debugging easier
+                break
 
         if not name:
             return None
@@ -86,6 +91,9 @@ class PokemonSkill(MycroftSkill):
 
     def do_pokemon_base(self, message, stat):
         mon = self._extract_pokemon(message)
+        if not mon:
+            self.speak_dialog("unable.to.find.pokemon")
+            return
         value = base_stat(mon, stat)
         self.speak_dialog("base.stat.is", {"pokemon": mon.name, "stat": stat, "value": value})
 
