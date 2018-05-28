@@ -41,25 +41,25 @@ class PokemonSkill(MycroftSkill):
         value = base_stat(mon, stat)
         self.speak_dialog("base.stat.is", {"pokemon": mon.name, "stat": stat, "value": value})
 
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Speed").optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("PokemonName").require("Speed").optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_speed(self, message):
         self.do_pokemon_base(message, "speed")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Special").require("Defense").optionally("Pokemon")
+    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("PokemonName").require("Special").require("Defense").optionally("Pokemon")
                     .optionally("Base"))
     def handle_pokemon_base_special_defense(self, message):
         self.do_pokemon_base(message, "special-defense")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Special").require("Attack").optionally("Pokemon")
+    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("PokemonName").require("Special").require("Attack").optionally("Pokemon")
                     .optionally("Base"))
     def handle_pokemon_base_special_attack(self, message):
         self.do_pokemon_base(message, "special-attack")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Defense").optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("PokemonName").require("Defense").optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_defense(self, message):
         self.do_pokemon_base(message, "defense")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Attack").optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("PokemonName").require("Attack").optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_attack(self, message):
         self.do_pokemon_base(message, "attack")
 
