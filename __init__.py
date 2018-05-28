@@ -74,8 +74,8 @@ class PokemonSkill(MycroftSkill):
                 alike = amount
 
             i += 1
-            if i >= 50:  # in early states of development, make debugging easier
-                break
+            # if i >= 50:  # in early states of development, make debugging easier
+            #     break
 
         if not name:
             return None
@@ -118,6 +118,10 @@ class PokemonSkill(MycroftSkill):
     @intent_handler(IntentBuilder("PokemonBaseAttack").require("Attack").optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_attack(self, message):
         self.do_pokemon_base(message, "attack")
+
+    @intent_handler(IntentBuilder("PokemonBaseHP").require("Health").optionally("Pokemon").optionally("Base"))
+    def handle_pokemon_base_attack(self, message):
+        self.do_pokemon_base(message, "hp")
 
     # The "stop" method defines what Mycroft does when told to stop during
     # the skill's execution. In this case, since the skill's functionality
