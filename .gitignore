@@ -1,3 +1,6 @@
+# IDE specific stuff - feel free to add your own if contributing
+.idea/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
