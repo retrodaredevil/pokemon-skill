@@ -91,11 +91,10 @@ class PokemonSkill(MycroftSkill):
     def _lang(self, message):
         return message.data.get("lang", None) or self.lang
 
-    def _convert_to_english(self):
-        try:
-            return self.system_unit == "english"
-        except AttributeError:
-            LOG.log("PokemonSkill doesn't have a system_unit attribute")
+    def _should_convert_to_english(self, message):
+        split = self._lang(message).split("-")
+        if len(split) >= 2:
+            return split[1] == "us"
         return False
 
     def _get_name_from_lang(self, names, lang=None):
@@ -206,7 +205,7 @@ class PokemonSkill(MycroftSkill):
             return
 
         kg = mon.weight / 10.0
-        if self._convert_to_english():
+        if self._should_convert_to_english():
             display = str(round(kg * 2.20462)) + " pounds"
         else:
             display = str(round(kg)) + " kilograms"
@@ -221,7 +220,7 @@ class PokemonSkill(MycroftSkill):
             return
 
         meters = mon.height / 10.0
-        if self._convert_to_english():
+        if self._should_convert_to_english():
             feet = meters * 3.28084
             whole_feet = floor(feet)
             inches = (feet - whole_feet) * 12
