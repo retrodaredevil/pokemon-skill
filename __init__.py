@@ -203,7 +203,7 @@ class PokemonSkill(MycroftSkill):
         if len(final_evolution_chain_list) == 1:
             evolution_chain = final_evolution_chain_list[0]
             if attr(attr(evolution_chain, "species"), "name") == mon.species.name:  # pokemon is in final evolution
-                if not find_species_chain(evolution_chain, mon.species.name)[0]:  # pokemon has no previous evolution
+                if not mon.species.evolution_chain.chain.evolves_to:  # if evolves_to list is empty
                     self.speak_dialog("pokemon.has.no.evolutions", {"pokemon": pokemon_name})
                     return
                 else:
