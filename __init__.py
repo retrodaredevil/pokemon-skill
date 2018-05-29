@@ -179,7 +179,7 @@ class PokemonSkill(MycroftSkill):
                 attr(attr(evolution, "species"), "name"))
             )))
 
-        self.speak_dialog("pokemon.evolves.into.dialog", {"pokemon": self._pokemon_name(mon),
+        self.speak_dialog("pokemon.evolves.into", {"pokemon": self._pokemon_name(mon),
                                                           "evolve": ", ".join(names_into)})
 
     @intent_handler(IntentBuilder("PokemonFormIntent").require("Form"))
