@@ -66,7 +66,7 @@ class PokemonSkill(MycroftSkill):
         :param mon: The pokemon object created with the pokemon method
         :return: A more readable/friendly version of the pokemon's name
         """
-        return self._get_name_from_lang(mon.forms, lang) or mon.name
+        return self._get_name_from_lang(mon.forms[0].names, lang) or mon.name
 
     def _species_name(self, species, lang=None):
         return self._get_name_from_lang(species.names, lang) or species.name
