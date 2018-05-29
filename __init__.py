@@ -218,7 +218,7 @@ class PokemonSkill(MycroftSkill):
                     lang
                 )
             )
-        self.speak.dialog("pokemon.final.evolution", {"pokemon": pokemon_name,
+        self.speak_dialog("pokemon.final.evolution", {"pokemon": pokemon_name,
                                                       "final": ", ".join(names_list)})
 
     @intent_handler(IntentBuilder("PokemonEvolveFirst").require("Evolve").require("First"))
