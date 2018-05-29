@@ -44,7 +44,7 @@ class PokemonSkill(MycroftSkill):
         if not self.pokemon_names:
             self.pokemon_names = [name for name in APIResourceList("pokemon").names]
 
-    def lang(self, message):
+    def _lang(self, message):
         return message.data.get("lang", None)
 
     def _get_name_from_lang(self, names, lang=None):
@@ -186,7 +186,7 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        lang = self.lang(message)
+        lang = self._lang(message)
         pokemon_name = self._pokemon_name(mon, lang)
         form_name = self._form_name(mon, lang)
         if not form_name:
@@ -202,7 +202,7 @@ class PokemonSkill(MycroftSkill):
             return
 
         value = base_stat(mon, stat)
-        self.speak_dialog("base.stat.is", {"pokemon": self._pokemon_name(mon, self.lang(message)),
+        self.speak_dialog("base.stat.is", {"pokemon": self._pokemon_name(mon, self._lang(message)),
                                            "stat": stat, "value": value})
 
     @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Speed")
