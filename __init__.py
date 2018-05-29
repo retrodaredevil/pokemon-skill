@@ -224,7 +224,7 @@ class PokemonSkill(MycroftSkill):
             feet = meters * 3.28084
             whole_feet = floor(feet)
             inches = (feet - whole_feet) * 12
-            display = str(whole_feet) + " foot " + str(inches) + " inches"
+            display = str(whole_feet) + " foot " + str(round(inches)) + " inches"
         else:
             display = str(round(meters / .1) * .1) + " meters"
 
@@ -394,6 +394,65 @@ class PokemonSkill(MycroftSkill):
                     .optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_hp(self, message):
         self.do_pokemon_base(message, "hp")
+
+    @intent_handler(IntentBuilder("PokemonColor").require("Color"))
+    def handle_pokemon_color(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        lang = self._lang(message)
+        color_name = self._get_name_from_lang(mon.species.color.names, lang)
+        pokemon_name = self._pokemon_name(mon, lang)
+
+        self.speak_dialog("pokemon.color.is", {"pokemon": pokemon_name, "color": color_name})
+
+    @intent_handler(IntentBuilder("PokemonShape").require("Shape"))
+    def handle_pokemon_shape(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        lang = self._lang(message)
+        shape_name = self._get_name_from_lang(mon.species.shape.names, lang)
+        pokemon_name = self._pokemon_name(mon, lang)
+
+        self.speak_dialog("pokemon.shape.is", {"pokemon": pokemon_name, "shape": shape_name})
+
+    @intent_handler(IntentBuilder("PokemonHabitat").require("Habitat"))
+    def handle_pokemon_habitat(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        lang = self._lang(message)
+        habitat_name = self._get_name_from_lang(mon.species.habitat.names, lang)
+        pokemon_name = self._pokemon_name(mon, lang)
+
+        self.speak_dialog("pokemon.lives.in", {"pokemon": pokemon_name, "habitat": habitat_name})
+
+    @intent_handler(IntentBuilder("PokemonBaseHappiness").require("Happiness").optionally("Base"))
+    def handle_pokemon_base_happiness(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+        lang = self._lang(message)
+        self.speak_dialog("base.stat.is", {"pokemon": self._pokemon_name(mon, lang),
+                                           "stat": "happiness", "value": mon.species.base_happiness})
+
+    @intent_handler(IntentBuilder("PokemonCaptureRate").require("CaptureRate"))
+    def handle_pokemon_capture_rate(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+        lang = self._lang(message)
+        self.speak_dialog("pokemon.capture.rate", {"pokemon": self._pokemon_name(mon, lang),
+                                                   "rate": mon.species.capture_rate})
 
     # The "stop" method defines what Mycroft does when told to stop during
     # the skill's execution. In this case, since the skill's functionality

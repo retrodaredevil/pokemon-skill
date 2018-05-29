@@ -1,6 +1,9 @@
 # IDE specific stuff - feel free to add your own if contributing
 .idea/
 
+# Other stuff
+ipython_log.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
