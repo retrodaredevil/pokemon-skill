@@ -21,6 +21,27 @@ def base_stat(mon, stat_name):
     raise ValueError(str(stat_name) + " is an unsupported stat.")
 
 
+def find_species_chain(chain, name_of_species):
+    """
+    NOTE: Each of the returned values may be NamedAPIResource objects or dicts, so make sure you use the attr method
+    so it will do the work for you when you want attributes from them
+    :param chain: The starting evolution chain
+    :param name_of_species: The name of species you want the evolution chain for
+    :return: A tuple where [0] is the evolution chain for the species before name_of_species or None if this is none,
+             and [1] is the species chain for name_of_species
+    """
+    if attr(attr(chain, "species"), "name") == name_of_species:
+        return None, chain
+    for evolution_chain in attr(chain, "evolves_to"):
+        if attr(attr(evolution_chain, "species"), "name") == name_of_species:
+            return chain, evolution_chain
+        r = find_species_chain(evolution_chain, name_of_species)
+        if r:
+            return r
+
+    return None, None
+
+
 def attr(obj, key):
     if isinstance(obj, dict):
         return obj[key]
@@ -66,7 +87,7 @@ class PokemonSkill(MycroftSkill):
         :param mon: The pokemon object created with the pokemon method
         :return: A more readable/friendly version of the pokemon's name
         """
-        return self._get_name_from_lang(mon.forms[0].names, lang) or mon.name
+        return self._get_name_from_lang(mon.forms[0].names, lang) or self._species_name(mon.species, lang)
 
     def _species_name(self, species, lang=None):
         return self._get_name_from_lang(species.names, lang) or species.name
@@ -152,35 +173,43 @@ class PokemonSkill(MycroftSkill):
             self.speak_dialog("pokemon.type.two", {"pokemon": mon.name, "type1": types[0].type.name,
                                                    "type2": types[1].type.name})
 
-    @intent_handler(IntentBuilder("PokemonEvolveIntent").require("Evolve").require("Into"))
+    @intent_handler(IntentBuilder("PokemonEvolveFromIntent").require("Evolve").require("From"))
+    def handle_pokemon_evolve_from(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+        
+        previous_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[0]
+        pokemon_name = self._pokemon_name(mon, self._lang(message))
+        if not previous_chain:
+            self.speak_dialog("pokemon.has.no.previous.evolution", {"pokemon": pokemon_name})
+            return
+        species = pokemon_species(attr(attr(previous_chain, "species"), "name"))
+        species_name = self._species_name(species)
+        self.speak_dialog("pokemon.evolves.from", {"pokemon": pokemon_name, "from": species_name})
+
+    @intent_handler(IntentBuilder("PokemonEvolveIntoIntent").require("Evolve").require("Into"))
     def handle_pokemon_evolve_into(self, message):
-        def find_species_chain(chain):
-            if attr(attr(chain, "species"), "name") == name:
-                return chain
-            for evolution_chain in attr(chain, "evolves_to"):
-                if attr(attr(evolution_chain, "species"), "name") == name:
-                    return evolution_chain
-                r = find_species_chain(evolution_chain)
-                if r:
-                    return r
-
-            return None
-
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
         if not mon:
             return
 
-        name = mon.species.name  # used in find_species_chain
-        into = attr(find_species_chain(mon.species.evolution_chain.chain), "evolves_to")
+        into = attr(find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1], "evolves_to")
         names_into = []
         for evolution in into:
             names_into.append(str(self._species_name(pokemon_species(
                 attr(attr(evolution, "species"), "name"))
             )))
 
-        self.speak_dialog("pokemon.evolves.into", {"pokemon": self._pokemon_name(mon),
-                                                          "evolve": ", ".join(names_into)})
+        pokemon_name = self._pokemon_name(mon, lang=self._lang(message))
+        if not names_into:
+            self.speak_dialog("pokemon.does.not.evolve", {"pokemon": pokemon_name})
+            return
+
+        self.speak_dialog("pokemon.evolves.into", {"pokemon": pokemon_name,
+                                                   "evolve": ", ".join(names_into)})
 
     @intent_handler(IntentBuilder("PokemonFormIntent").require("Form"))
     def handle_pokemon_form(self, message):
