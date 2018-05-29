@@ -1,5 +1,6 @@
 import re
 from difflib import SequenceMatcher
+from math import floor
 
 from adapt.intent import IntentBuilder
 from mycroft.skills.core import MycroftSkill, intent_handler
@@ -30,10 +31,10 @@ def find_species_chain(chain, name_of_species):
     :return: A tuple where [0] is the evolution chain for the species before name_of_species or None if this is none,
              and [1] is the species chain for name_of_species
     """
-    if attr(attr(chain, "species"), "name") == name_of_species:
+    if attr(chain, "species.name") == name_of_species:
         return None, chain
     for evolution_chain in attr(chain, "evolves_to"):
-        if attr(attr(evolution_chain, "species"), "name") == name_of_species:
+        if attr(evolution_chain, "species.name") == name_of_species:
             return chain, evolution_chain
         r = find_species_chain(evolution_chain, name_of_species)
         if r:
@@ -58,6 +59,13 @@ def find_final_species_chains(chain):
 
 
 def attr(obj, key):
+    if isinstance(key, list):
+        split = key
+    else:
+        split = key.split(".")
+    key = split[0]
+    if len(split) > 1:
+        return attr(attr(obj, key), split[1:])
     if isinstance(obj, dict):
         return obj[key]
     return getattr(obj, key)
@@ -83,6 +91,13 @@ class PokemonSkill(MycroftSkill):
     def _lang(self, message):
         return message.data.get("lang", None) or self.lang
 
+    def _convert_to_english(self):
+        try:
+            return self.system_unit == "english"
+        except AttributeError:
+            LOG.log("PokemonSkill doesn't have a system_unit attribute")
+        return False
+
     def _get_name_from_lang(self, names, lang=None):
         if not names:
             return None
@@ -90,9 +105,10 @@ class PokemonSkill(MycroftSkill):
 
         best_name = None
         for name in names:
-            if name.language.name == lang[0]:
+            language = name.language
+            if language.name == lang[0]:
                 best_name = name.name
-                if name.language.iso3166 == lang[1]:
+                if language.iso3166 == lang[1]:
                     return best_name
 
         return best_name or names[0].name
@@ -173,6 +189,48 @@ class PokemonSkill(MycroftSkill):
         self.last_pokemon = mon
         return mon
 
+    @intent_handler(IntentBuilder("PokemonIDIntent").require("ID"))
+    def handle_pokemon_id(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        self.speak_dialog("pokemon.id.is", {"pokemon": self._pokemon_name(mon), "id": str(mon.species.id)})
+
+    @intent_handler(IntentBuilder("PokemonWeightIntent").require("Weight"))
+    def handle_pokemon_weight(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        kg = mon.weight / 10.0
+        if self._convert_to_english():
+            display = str(round(kg * 2.20462)) + " pounds"
+        else:
+            display = str(round(kg)) + " kilograms"
+
+        self.speak_dialog("pokemon.weighs", {"pokemon": self._pokemon_name(mon), "weight": display})
+
+    @intent_handler(IntentBuilder("PokemonHeightIntent").require("Height"))
+    def handle_pokemon_height(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        meters = mon.height / 10.0
+        if self._convert_to_english():
+            feet = meters * 3.28084
+            whole_feet = floor(feet)
+            inches = (feet - whole_feet) * 12
+            display = str(whole_feet) + " foot " + str(inches) + " inches"
+        else:
+            display = str(round(meters / .1) * .1) + " meters"
+
+        self.speak_dialog("pokemon.height", {"pokemon": self._pokemon_name(mon), "height": display})
+
     @intent_handler(IntentBuilder("PokemonTypeIntent").require("Type"))
     def handle_pokemon_type(self, message):
         mon = self._extract_pokemon(message)
@@ -202,7 +260,7 @@ class PokemonSkill(MycroftSkill):
         final_evolution_chain_list = find_final_species_chains(species_chain)
         if len(final_evolution_chain_list) == 1:
             evolution_chain = final_evolution_chain_list[0]
-            if attr(attr(evolution_chain, "species"), "name") == mon.species.name:  # pokemon is in final evolution
+            if attr(evolution_chain, "species.name") == mon.species.name:  # pokemon is in final evolution
                 if not mon.species.evolution_chain.chain.evolves_to:  # if evolves_to list is empty
                     self.speak_dialog("pokemon.has.no.evolutions", {"pokemon": pokemon_name})
                     return
@@ -214,7 +272,7 @@ class PokemonSkill(MycroftSkill):
         for evolution_chain in final_evolution_chain_list:
             names_list.append(
                 self._species_name(
-                    pokemon_species(attr(attr(evolution_chain, "species"), "name")),
+                    pokemon_species(attr(evolution_chain, "species.name")),
                     lang
                 )
             )
@@ -229,8 +287,18 @@ class PokemonSkill(MycroftSkill):
             return
 
         lang = self._lang(message)
-        species_name = self._species_name(mon.species.evolution_chain.chain.species, lang)
         pokemon_name = self._pokemon_name(mon, lang)
+
+        evolution_chain = mon.species.evolution_chain.chain
+        species = evolution_chain.species
+        if species.name == mon.species.name:  # mon is in first evolution
+            if not evolution_chain.evolves_to:  # pokemon has no evolutions
+                self.speak_dialog("pokemon.has.no.evolutions", {"pokemon": pokemon_name})
+                return
+            else:
+                self.speak_dialog("pokemon.is.in.first.evolution", {"pokemon": pokemon_name})
+                return
+        species_name = self._species_name(species, lang)
 
         self.speak_dialog("pokemon.first.evolution.is", {"pokemon": pokemon_name, "first": species_name})
 
@@ -246,10 +314,9 @@ class PokemonSkill(MycroftSkill):
         if not previous_chain:
             self.speak_dialog("pokemon.has.no.previous.evolution", {"pokemon": pokemon_name})
             return
-        species = pokemon_species(attr(attr(previous_chain, "species"), "name"))
+        species = pokemon_species(attr(previous_chain, "species.name"))
         species_name = self._species_name(species)
         self.speak_dialog("pokemon.evolves.from", {"pokemon": pokemon_name, "from": species_name})
-
 
     @intent_handler(IntentBuilder("PokemonEvolveIntoIntent").require("Evolve").require("Into"))
     def handle_pokemon_evolve_into(self, message):
@@ -261,8 +328,8 @@ class PokemonSkill(MycroftSkill):
         into = attr(find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1], "evolves_to")
         names_into = []
         for evolution in into:
-            names_into.append(str(self._species_name(pokemon_species(
-                attr(attr(evolution, "species"), "name"))
+            names_into.append(str(self._species_name(
+                pokemon_species(attr(evolution, "species.name"))
             )))
 
         pokemon_name = self._pokemon_name(mon, lang=self._lang(message))
