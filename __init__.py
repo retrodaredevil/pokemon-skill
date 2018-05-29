@@ -42,6 +42,21 @@ def find_species_chain(chain, name_of_species):
     return None, None
 
 
+def find_final_species_chains(chain):
+    """
+    :param chain: The evolution chain for a desired pokemon
+    :return: A list of the possible final most evolutions related to chain.species. This could be empty
+    """
+    evolves_to = attr(chain, "evolves_to")
+    if not evolves_to:
+        return [chain]
+    r = []
+    for evolution_chain in evolves_to:
+        r.extend(find_final_species_chains(evolution_chain))
+
+    return r
+
+
 def attr(obj, key):
     if isinstance(obj, dict):
         return obj[key]
@@ -66,7 +81,7 @@ class PokemonSkill(MycroftSkill):
             self.pokemon_names = [name for name in APIResourceList("pokemon").names]
 
     def _lang(self, message):
-        return message.data.get("lang", None)
+        return message.data.get("lang", None) or self.lang
 
     def _get_name_from_lang(self, names, lang=None):
         if not names:
@@ -173,13 +188,56 @@ class PokemonSkill(MycroftSkill):
             self.speak_dialog("pokemon.type.two", {"pokemon": mon.name, "type1": types[0].type.name,
                                                    "type2": types[1].type.name})
 
+    @intent_handler(IntentBuilder("PokemonEvolveFinal").require("Evolve").require("final"))
+    def handle_pokemon_evolve_final(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        lang = self._lang(message)
+        pokemon_name = self._pokemon_name(mon, lang)
+
+        species_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1]
+        final_evolution_chain_list = find_final_species_chains(species_chain)
+        if len(final_evolution_chain_list) == 1:
+            evolution_chain = final_evolution_chain_list[0]
+            if attr(attr(evolution_chain, "species"), "name") == mon.species.name:  # pokemon is in final evolution
+                if not find_species_chain(evolution_chain, mon.species.name)[0]:  # pokemon has no previous evolution
+                    self.speak_dialog("pokemon.has.no.evolutions", {"pokemon": pokemon_name})
+                    return
+                else:
+                    self.speak_dialog("pokemon.is.in.final.evolution", {"pokemon": pokemon_name})
+                    return
+
+        names_list = []
+        for evolution_chain in final_evolution_chain_list:
+            names_list.append(self._get_name_from_lang(self._species_name(pokemon_species(
+                attr(attr(evolution_chain, "species"), "name"))
+            ), lang))
+        self.speak.dialog("pokemon.final.evolution", {"pokemon": pokemon_name,
+                                                      "final": ", ".join(names_list)})
+
+    @intent_handler(IntentBuilder("PokemonEvolveFirst").require("Evolve").require("First"))
+    def handle_pokemon_evolve_first(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        lang = self._lang(message)
+        species_name = self._species_name(mon.species.evolution_chain.chain.species, lang)
+        pokemon_name = self._pokemon_name(mon, lang)
+
+        self.speak_dialog("pokemon.first.evolution.is", {"pokemon": pokemon_name, "first": species_name})
+
     @intent_handler(IntentBuilder("PokemonEvolveFromIntent").require("Evolve").require("From"))
     def handle_pokemon_evolve_from(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
         if not mon:
             return
-        
+
         previous_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[0]
         pokemon_name = self._pokemon_name(mon, self._lang(message))
         if not previous_chain:
@@ -188,6 +246,7 @@ class PokemonSkill(MycroftSkill):
         species = pokemon_species(attr(attr(previous_chain, "species"), "name"))
         species_name = self._species_name(species)
         self.speak_dialog("pokemon.evolves.from", {"pokemon": pokemon_name, "from": species_name})
+
 
     @intent_handler(IntentBuilder("PokemonEvolveIntoIntent").require("Evolve").require("Into"))
     def handle_pokemon_evolve_into(self, message):
