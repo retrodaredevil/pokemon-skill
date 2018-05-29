@@ -24,7 +24,7 @@ def base_stat(mon, stat_name):
 def attr(obj, key):
     if isinstance(obj, dict):
         return obj[key]
-    return obj.__getattribute__(key)
+    return getattr(obj, key)
 
 
 def split_word(to_split):
@@ -155,12 +155,15 @@ class PokemonSkill(MycroftSkill):
     @intent_handler(IntentBuilder("PokemonEvolveIntent").require("Evolve").require("Into"))
     def handle_pokemon_evolve_into(self, message):
         def find_species_chain(chain):
+            if attr(attr(chain, "species"), "name") == name:
+                return chain
             for evolution_chain in attr(chain, "evolves_to"):
-                if attr(attr(chain, "species"), "name") == name:
+                if attr(attr(evolution_chain, "species"), "name") == name:
                     return evolution_chain
                 r = find_species_chain(evolution_chain)
                 if r:
                     return r
+
             return None
 
         mon = self._extract_pokemon(message)
