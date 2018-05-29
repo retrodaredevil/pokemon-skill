@@ -205,7 +205,7 @@ class PokemonSkill(MycroftSkill):
             return
 
         kg = mon.weight / 10.0
-        if self._should_convert_to_english():
+        if self._should_convert_to_english(message):
             display = str(round(kg * 2.20462)) + " pounds"
         else:
             display = str(round(kg)) + " kilograms"
@@ -220,7 +220,7 @@ class PokemonSkill(MycroftSkill):
             return
 
         meters = mon.height / 10.0
-        if self._should_convert_to_english():
+        if self._should_convert_to_english(message):
             feet = meters * 3.28084
             whole_feet = floor(feet)
             inches = (feet - whole_feet) * 12
