@@ -32,6 +32,7 @@ class PokemonSkill(MycroftSkill):
     def __init__(self):
         super(PokemonSkill, self).__init__(name="PokemonSkill")
         self.pokemon_names = None  # a list of a list of strings where each sublist is the pokemon's name split in words
+        self.last_pokemon = None
 
     def initialize(self):
         if not self.pokemon_names:
@@ -81,46 +82,78 @@ class PokemonSkill(MycroftSkill):
             return None
         return pokemon(name)
 
-    # @intent_handler(IntentBuilder("PokemonTypeIntent").require("Type"))
-    # def handle_pokemon_type(self, message):
-    #     pass
-    #
+    def _check_pokemon(self, mon):
+        """
+        :param mon: The pokemon object created from pokemon()
+        :return: The pokemon you should use. If None, where ever you called this, just return
+        """
+        if not mon:
+            if not self.last_pokemon:
+                self.speak_dialog("unable.to.find.pokemon")
+                return None
+            else:
+                mon = self.last_pokemon
+        self.last_pokemon = mon
+        return mon
+
+    @intent_handler(IntentBuilder("PokemonTypeIntent").require("Type"))
+    def handle_pokemon_type(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        types = mon.types
+        type_names = []
+        for t in types:
+            type_names.append(t.type.name)
+
+        if len(type_names) == 1:
+            self.speak_dialog("pokemon.type.one", {"type1": type_names[0]})
+        else:
+            self.speak_dialog("pokemon.type.two", {"type1": type_names[0], "type2": type_names[1]})
+
     # @intent_handler(IntentBuilder("PokemonEvolveIntent").require("Evolve"))
     # def handle_pokemon_evolve(self, message):
     #     pass
 
     def do_pokemon_base(self, message, stat):
         mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
         if not mon:
-            self.speak_dialog("unable.to.find.pokemon")
             return
+
         value = base_stat(mon, stat)
         self.speak_dialog("base.stat.is", {"pokemon": mon.name, "stat": stat, "value": value})
 
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Speed").optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Speed")
+                    .optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_speed(self, message):
         self.do_pokemon_base(message, "speed")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpecialDefense").require("Special").require("Defense").optionally("Pokemon")
-                    .optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseSpecialDefense").require("Special").require("Defense")
+                    .optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_special_defense(self, message):
         self.do_pokemon_base(message, "special-defense")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpecialAttack").require("Special").require("Attack").optionally("Pokemon")
-                    .optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseSpecialAttack").require("Special").require("Attack")
+                    .optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_special_attack(self, message):
         self.do_pokemon_base(message, "special-attack")
 
-    @intent_handler(IntentBuilder("PokemonBaseDefense").require("Defense").optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseDefense").require("Defense")
+                    .optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_defense(self, message):
         self.do_pokemon_base(message, "defense")
 
-    @intent_handler(IntentBuilder("PokemonBaseAttack").require("Attack").optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseAttack").require("Attack")
+                    .optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_attack(self, message):
         self.do_pokemon_base(message, "attack")
 
-    @intent_handler(IntentBuilder("PokemonBaseHP").require("HP").optionally("Pokemon").optionally("Base"))
-    def handle_pokemon_base_attack(self, message):
+    @intent_handler(IntentBuilder("PokemonBaseHP").require("HP")
+                    .optionally("Pokemon").optionally("Base"))
+    def handle_pokemon_base_hp(self, message):
         self.do_pokemon_base(message, "hp")
 
     # The "stop" method defines what Mycroft does when told to stop during
