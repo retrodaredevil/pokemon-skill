@@ -109,9 +109,9 @@ class PokemonSkill(MycroftSkill):
             type_names.append(t.type.name)
 
         if len(type_names) == 1:
-            self.speak_dialog("pokemon.type.one", {"type1": type_names[0]})
+            self.speak_dialog("pokemon.type.one", {"pokemon": mon.name, "type1": type_names[0]})
         else:
-            self.speak_dialog("pokemon.type.two", {"type1": type_names[0], "type2": type_names[1]})
+            self.speak_dialog("pokemon.type.two", {"pokemon": mon.name, "type1": type_names[0], "type2": type_names[1]})
 
     # @intent_handler(IntentBuilder("PokemonEvolveIntent").require("Evolve"))
     # def handle_pokemon_evolve(self, message):
