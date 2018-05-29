@@ -4,7 +4,7 @@ from difflib import SequenceMatcher
 from adapt.intent import IntentBuilder
 from mycroft.skills.core import MycroftSkill, intent_handler
 from mycroft.util.log import LOG
-from pokebase import pokemon, APIResourceList
+from pokebase import pokemon, APIResourceList, pokemon_species
 
 
 def base_stat(mon, stat_name):
@@ -19,6 +19,12 @@ def base_stat(mon, stat_name):
         if stat.stat.name.lower() == stat_name:
             return int(stat.base_stat)
     raise ValueError(str(stat_name) + " is an unsupported stat.")
+
+
+def attr(obj, key):
+    if isinstance(obj, dict):
+        return obj[key]
+    return obj.__getattribute__(key)
 
 
 def split_word(to_split):
@@ -37,6 +43,38 @@ class PokemonSkill(MycroftSkill):
     def initialize(self):
         if not self.pokemon_names:
             self.pokemon_names = [name for name in APIResourceList("pokemon").names]
+
+    def _get_name_from_lang(self, names, lang=None):
+        if not names:
+            return None
+        lang = (lang or "en-us").split("-")  # lang[0] is language, lang[1] is country
+
+        best_name = None
+        for name in names:
+            if name.language.name == lang[0]:
+                best_name = name.name
+                if name.language.iso3166 == lang[1]:
+                    return best_name
+
+        return best_name or names[0].name
+
+    def _pokemon_name(self, mon, lang=None):
+        """
+        :param mon: The pokemon object created with the pokemon method
+        :return: A more readable/friendly version of the pokemon's name
+        """
+        return self._get_name_from_lang(mon.forms, lang) or mon.name
+
+    def _species_name(self, species, lang=None):
+        return self._get_name_from_lang(species.names, lang) or species.name
+
+    def _form_name(self, mon, lang=None):
+        """
+        :param mon: The pokemon object created with the pokemon method
+        :return: A readable/friendly version of the pokemon's form or None if the pokemon isn't in a form
+        """
+        form = mon.forms[0]
+        return self._get_name_from_lang(form.form_names, lang) or None
 
     def _extract_pokemon(self, message):
         def alike_amount(pokemon_name):
@@ -84,7 +122,7 @@ class PokemonSkill(MycroftSkill):
 
     def _check_pokemon(self, mon):
         """
-        :param mon: The pokemon object created from pokemon()
+        :param mon: The pokemon object created from pokemon() (or possibly None)
         :return: The pokemon you should use. If None, where ever you called this, just return
         """
         if not mon:
@@ -104,18 +142,55 @@ class PokemonSkill(MycroftSkill):
             return
 
         types = mon.types
-        type_names = []
-        for t in types:
-            type_names.append(t.type.name)
 
-        if len(type_names) == 1:
-            self.speak_dialog("pokemon.type.one", {"pokemon": mon.name, "type1": type_names[0]})
+        if len(types) == 1:
+            self.speak_dialog("pokemon.type.one", {"pokemon": mon.name, "type1": types[0].type.name})
         else:
-            self.speak_dialog("pokemon.type.two", {"pokemon": mon.name, "type1": type_names[0], "type2": type_names[1]})
+            self.speak_dialog("pokemon.type.two", {"pokemon": mon.name, "type1": types[0].type.name,
+                                                   "type2": types[1].type.name})
 
-    # @intent_handler(IntentBuilder("PokemonEvolveIntent").require("Evolve"))
-    # def handle_pokemon_evolve(self, message):
-    #     pass
+    @intent_handler(IntentBuilder("PokemonEvolveIntent").require("Evolve").require("Into"))
+    def handle_pokemon_evolve_into(self, message):
+        def find_species_chain(chain):
+            for evolution_chain in attr(chain, "evolves_to"):
+                if attr(attr(chain, "species"), "name") == name:
+                    return evolution_chain
+                r = find_species_chain(evolution_chain)
+                if r:
+                    return r
+            return None
+
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        name = mon.species.name  # used in find_species_chain
+        into = attr(find_species_chain(mon.species.evolution_chain.chain), "evolves_to")
+        names_into = []
+        for evolution in into:
+            names_into.append(str(self._species_name(pokemon_species(
+                attr(attr(evolution, "species"), "name"))
+            )))
+
+        self.speak_dialog("pokemon.evolves.into.dialog", {"pokemon": self._pokemon_name(mon),
+                                                          "evolve": ", ".join(names_into)})
+
+    @intent_handler(IntentBuilder("PokemonFormIntent").require("Form"))
+    def handle_pokemon_form(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        lang = message.get("lang", None)
+        pokemon_name = self._pokemon_name(mon, lang)
+        form_name = self._form_name(mon, lang)
+        if not form_name:
+            self.speak_dialog("pokemon.has.no.forms", {"pokemon": pokemon_name})
+            return
+
+        self.speak_dialog("pokemon.is.in.form", {"pokemon": pokemon_name, "form": form_name})
 
     def do_pokemon_base(self, message, stat):
         mon = self._extract_pokemon(message)
@@ -124,7 +199,8 @@ class PokemonSkill(MycroftSkill):
             return
 
         value = base_stat(mon, stat)
-        self.speak_dialog("base.stat.is", {"pokemon": mon.name, "stat": stat, "value": value})
+        self.speak_dialog("base.stat.is", {"pokemon": self._pokemon_name(mon, message.get("lang", None)),
+                                           "stat": stat, "value": value})
 
     @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Speed")
                     .optionally("Pokemon").optionally("Base"))
