@@ -212,9 +212,12 @@ class PokemonSkill(MycroftSkill):
 
         names_list = []
         for evolution_chain in final_evolution_chain_list:
-            names_list.append(self._get_name_from_lang(self._species_name(pokemon_species(
-                attr(attr(evolution_chain, "species"), "name"))
-            ), lang))
+            names_list.append(
+                self._species_name(
+                    pokemon_species(attr(attr(evolution_chain, "species"), "name")),
+                    lang
+                )
+            )
         self.speak.dialog("pokemon.final.evolution", {"pokemon": pokemon_name,
                                                       "final": ", ".join(names_list)})
 
