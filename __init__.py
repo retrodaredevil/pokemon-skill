@@ -19,7 +19,10 @@ def base_stat(mon, stat_name):
     for stat in mon.stats:
         if stat.stat.name.lower() == stat_name:
             return int(stat.base_stat)
-    raise ValueError(str(stat_name) + " is an unsupported stat.")
+
+    error = str(stat_name) + " is an unsupported stat."
+    LOG.error(error)
+    raise ValueError(error)
 
 
 def find_species_chain(chain, name_of_species):
@@ -294,8 +297,8 @@ class PokemonSkill(MycroftSkill):
             names_list.append(name)
         display = self._list_to_str(names_list)
         if not display:
-            raise Exception("display is empty. names_list: " + str(names_list) +
-                            ", ...chain_list: " + str(final_evolution_chain_list))
+            LOG.error("display is empty. names_list: " + str(names_list) +
+                      ", ...chain_list: " + str(final_evolution_chain_list))
         self.speak_dialog("pokemon.final.evolution", {"pokemon": pokemon_name,
                                                       "final": display})
 
@@ -510,7 +513,7 @@ class PokemonSkill(MycroftSkill):
 
         display = self._list_to_str(names_list)
         if not display:
-            raise Exception("display shouldn't be empty. groups: " + str(groups) + ", names_list: " + str(names_list))
+            LOG.error("display shouldn't be empty. groups: " + str(groups) + ", names_list: " + str(names_list))
         pokemon_name = self._pokemon_name(mon, lang)
         self.speak_dialog("pokemon.egg.groups.are", {"pokemon": pokemon_name, "groups": display})
 
