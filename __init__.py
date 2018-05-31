@@ -91,23 +91,33 @@ class PokemonSkill(MycroftSkill):
     def _lang(self, message):
         return message.data.get("lang", None) or self.lang
 
-    def _should_convert_to_english(self, message):
-        split = self._lang(message).split("-")
-        if len(split) >= 2:
-            return split[1] == "us"
-        return False
+    def _list_to_str(self, l):
+        last = ""
+        if len(l) >= 2:
+            last = " " + self.translate("and") + " " + l[-1]
+        return ", ".join(l[:-1]) + last
+
+    def _use_english_units(self, message):
+        # split = self._lang(message).split("-")
+        # if len(split) >= 2:
+        #     return split[1] == "us"
+        # return False
+        # docs on config: https://mycroft.ai/documentation/mycroft-conf/
+        return self.config_core.get("system_unit") == "english"
 
     def _get_name_from_lang(self, names, lang=None):
         if not names:
             return None
         lang = (lang or "en-us").split("-")  # lang[0] is language, lang[1] is country
+        lang_name = lang[0]
+        country = len(lang) >= 2 and lang[1] or None  # use lang[1] as country or None if lang doesn't have one
 
         best_name = None
         for name in names:
             language = name.language
-            if language.name == lang[0]:
+            if language.name == lang_name:
                 best_name = name.name
-                if language.iso3166 == lang[1]:
+                if language.iso3166 == country or not country:
                     return best_name
 
         return best_name or names[0].name
@@ -205,10 +215,10 @@ class PokemonSkill(MycroftSkill):
             return
 
         kg = mon.weight / 10.0
-        if self._should_convert_to_english(message):
-            display = str(round(kg * 2.20462)) + " pounds"
+        if self._use_english_units(message):
+            display = str(int(round(kg * 2.20462))) + " " + self.translate("pounds")
         else:
-            display = str(round(kg)) + " kilograms"
+            display = str(int(round(kg))) + " " + self.translate("kilograms")
 
         self.speak_dialog("pokemon.weighs", {"pokemon": self._pokemon_name(mon), "weight": display})
 
@@ -220,13 +230,14 @@ class PokemonSkill(MycroftSkill):
             return
 
         meters = mon.height / 10.0
-        if self._should_convert_to_english(message):
+        if self._use_english_units(message):
             feet = meters * 3.28084
             whole_feet = floor(feet)
             inches = (feet - whole_feet) * 12
-            display = str(whole_feet) + " foot " + str(round(inches)) + " inches"
+            display = str(whole_feet) + " " + self.translate("foot") +\
+                " " + str(int(round(inches))) + " " + self.translate("inches")
         else:
-            display = str(round(meters / .1) * .1) + " meters"
+            display = str(round(meters / .1) * .1) + " " + self.translate("meters")
 
         self.speak_dialog("pokemon.height", {"pokemon": self._pokemon_name(mon), "height": display})
 
@@ -239,10 +250,11 @@ class PokemonSkill(MycroftSkill):
 
         types = mon.types
 
+        pokemon_name = self._pokemon_name(mon, self._lang(message))
         if len(types) == 1:
-            self.speak_dialog("pokemon.type.one", {"pokemon": mon.name, "type1": types[0].type.name})
+            self.speak_dialog("pokemon.type.one", {"pokemon": pokemon_name, "type1": types[0].type.name})
         else:
-            self.speak_dialog("pokemon.type.two", {"pokemon": mon.name, "type1": types[0].type.name,
+            self.speak_dialog("pokemon.type.two", {"pokemon": pokemon_name, "type1": types[0].type.name,
                                                    "type2": types[1].type.name})
 
     @intent_handler(IntentBuilder("PokemonEvolveFinal").require("Evolve").require("final"))
@@ -276,7 +288,7 @@ class PokemonSkill(MycroftSkill):
                 )
             )
         self.speak_dialog("pokemon.final.evolution", {"pokemon": pokemon_name,
-                                                      "final": ", ".join(names_list)})
+                                                      "final": self._list_to_str(names_list)})
 
     @intent_handler(IntentBuilder("PokemonEvolveFirst").require("Evolve").require("First"))
     def handle_pokemon_evolve_first(self, message):
@@ -337,7 +349,7 @@ class PokemonSkill(MycroftSkill):
             return
 
         self.speak_dialog("pokemon.evolves.into", {"pokemon": pokemon_name,
-                                                   "evolve": ", ".join(names_into)})
+                                                   "evolve": self._list_to_str(names_into)})
 
     @intent_handler(IntentBuilder("PokemonFormIntent").require("Form"))
     def handle_pokemon_form(self, message):
@@ -453,6 +465,23 @@ class PokemonSkill(MycroftSkill):
         lang = self._lang(message)
         self.speak_dialog("pokemon.capture.rate", {"pokemon": self._pokemon_name(mon, lang),
                                                    "rate": mon.species.capture_rate})
+
+    @intent_handler(IntentBuilder("PokemonEggGroups").require("Egg"))
+    def handle_pokemon_egg_groups(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        lang = self._lang(message)
+
+        groups = mon.species.egg_groups
+        names_list = []
+        for group in groups:
+            names_list.append(self._get_name_from_lang(group.names, lang))
+
+        display = self._list_to_str(names_list)
+        self.speak_dialog("pokemon.egg.groups.are", {"pokemon": self._pokemon_name(mon, lang), "groups": display})
 
     # The "stop" method defines what Mycroft does when told to stop during
     # the skill's execution. In this case, since the skill's functionality
