@@ -94,13 +94,15 @@ class PokemonSkill(MycroftSkill):
     def _lang(self, message):
         return message.data.get("lang", None) or self.lang
 
-    def _list_to_str(self, l):
+    def _list_to_str(self, l, and_str=None):
         length = len(l)
         if length == 0:
             return ""
         elif length == 1:
             return l[0]
-        return ", ".join(l[:-1]) + " " + self.translate("and") + " " + l[-1]
+        if not and_str:
+            and_str = self.translate("and")
+        return ", ".join(l[:-1]) + " " + and_str + " " + l[-1]
 
     def _use_english_units(self, message):
         # split = self._lang(message).split("-")
@@ -444,8 +446,11 @@ class PokemonSkill(MycroftSkill):
             # LOG.info("species: " + species.name + ", _species_name(): " + name + " lang: " + lang)
             details_display = ""
             if should_add_details:
-                evolution_details = attr(evolution, "evolution_details")
-                details_display = " by " + self._evolution_details_str(evolution_details, lang)
+                evolution_details_list = attr(evolution, "evolution_details")
+                evolution_details_str_list = []
+                for evolution_details in evolution_details_list:
+                    evolution_details_str_list.append(self._evolution_details_str(evolution_details, lang))
+                details_display = " by " + self._list_to_str(evolution_details_str_list, and_str="or")
 
             names_into.append(name + details_display)
 
