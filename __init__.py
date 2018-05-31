@@ -103,14 +103,17 @@ class PokemonSkill(MycroftSkill):
         #     return split[1] == "us"
         # return False
         # docs on config: https://mycroft.ai/documentation/mycroft-conf/
-        return self.config_core.get("system_unit") == "english"
+        unit = self.config_core.get("system_unit")
+        if unit != "english" and unit != "metric":
+            LOG.error("Unit is unknown. system_unit: " + str(unit))
+        return unit == "english"
 
     def _get_name_from_lang(self, names, lang=None):
         if not names:
             return None
         lang = (lang or "en-us").split("-")  # lang[0] is language, lang[1] is country
         lang_name = lang[0]
-        country = len(lang) >= 2 and lang[1] or None  # use lang[1] as country or None if lang doesn't have one
+        country = len(lang) > 1 and lang[1] or ""  # use lang[1] as country or "" if lang doesn't have one
 
         best_name = None
         for name in names:
@@ -120,7 +123,11 @@ class PokemonSkill(MycroftSkill):
                 if language.iso3166 == country or not country:
                     return best_name
 
-        return best_name or names[0].name
+        if not best_name:
+            LOG.info("Couldn't find a name for lang: " + str(lang) + ", lang_name: " + lang_name +
+                     ", country: " + country + " | using name: " + names[-1].name)
+
+        return best_name or names[-1].name
 
     def _pokemon_name(self, mon, lang=None):
         """
@@ -218,7 +225,7 @@ class PokemonSkill(MycroftSkill):
         if self._use_english_units(message):
             display = str(int(round(kg * 2.20462))) + " " + self.translate("pounds")
         else:
-            display = str(int(round(kg))) + " " + self.translate("kilograms")
+            display = str(kg) + " " + self.translate("kilograms")
 
         self.speak_dialog("pokemon.weighs", {"pokemon": self._pokemon_name(mon), "weight": display})
 
@@ -237,7 +244,7 @@ class PokemonSkill(MycroftSkill):
             display = str(whole_feet) + " " + self.translate("foot") +\
                 " " + str(int(round(inches))) + " " + self.translate("inches")
         else:
-            display = str(round(meters / .1) * .1) + " " + self.translate("meters")
+            display = str(round(meters * 10.0) / 10.0) + " " + self.translate("meters")
 
         self.speak_dialog("pokemon.height", {"pokemon": self._pokemon_name(mon), "height": display})
 
@@ -453,8 +460,20 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
         lang = self._lang(message)
-        self.speak_dialog("base.stat.is", {"pokemon": self._pokemon_name(mon, lang),
-                                           "stat": "happiness", "value": mon.species.base_happiness})
+        pokemon_name = self._pokemon_name(mon, lang)
+        happiness = mon.species.base_happiness
+        self.speak_dialog("base.stat.is", {"pokemon": pokemon_name, "stat": "happiness", "value": str(happiness)})
+
+    @intent_handler(IntentBuilder("PokemonBaseExperience").require("Experience").optionally("Base"))
+    def handle_pokemon_base_experience(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+        lang = self._lang(message)
+        pokemon_name = self._pokemon_name(mon, lang)
+        experience = mon.base_experience
+        self.speak_dialog("base.stat.is", {"pokemon": pokemon_name, "stat": "experience", "value": str(experience)})
 
     @intent_handler(IntentBuilder("PokemonCaptureRate").require("CaptureRate"))
     def handle_pokemon_capture_rate(self, message):
@@ -463,8 +482,9 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
         lang = self._lang(message)
-        self.speak_dialog("pokemon.capture.rate", {"pokemon": self._pokemon_name(mon, lang),
-                                                   "rate": mon.species.capture_rate})
+        pokemon_name = self._pokemon_name(mon, lang)
+        capture_rate = mon.species.capture_rate
+        self.speak_dialog("pokemon.capture.rate", {"pokemon": pokemon_name, "rate": capture_rate})
 
     @intent_handler(IntentBuilder("PokemonEggGroups").require("Egg"))
     def handle_pokemon_egg_groups(self, message):
@@ -478,7 +498,8 @@ class PokemonSkill(MycroftSkill):
         groups = mon.species.egg_groups
         names_list = []
         for group in groups:
-            names_list.append(self._get_name_from_lang(group.names, lang))
+            group_name = self._get_name_from_lang(group.names, lang)
+            names_list.append(group_name)
 
         display = self._list_to_str(names_list)
         self.speak_dialog("pokemon.egg.groups.are", {"pokemon": self._pokemon_name(mon, lang), "groups": display})
