@@ -104,9 +104,9 @@ class PokemonSkill(MycroftSkill):
         # return False
         # docs on config: https://mycroft.ai/documentation/mycroft-conf/
         unit = self.config_core.get("system_unit")
-        if unit != "english" and unit != "metric":
+        if unit != "english" and unit != "metric" and unit != "imperial":
             LOG.error("Unit is unknown. system_unit: " + str(unit))
-        return unit == "english"
+        return unit == "english" or unit == "imperial"
 
     def _get_name_from_lang(self, names, lang=None):
         if not names:
@@ -285,17 +285,19 @@ class PokemonSkill(MycroftSkill):
                 else:
                     self.speak_dialog("pokemon.is.in.final.evolution", {"pokemon": pokemon_name})
                     return
+        elif len(final_evolution_chain_list) == 0:
+            raise ValueError("find_final_species_chains() returned a list with a length of 0")
 
         names_list = []
         for evolution_chain in final_evolution_chain_list:
-            names_list.append(
-                self._species_name(
-                    pokemon_species(attr(evolution_chain, "species.name")),
-                    lang
-                )
-            )
+            name = self._species_name(pokemon_species(attr(evolution_chain, "species.name")), lang)
+            names_list.append(name)
+        display = self._list_to_str(names_list)
+        if not display:
+            raise Exception("display is empty. names_list: " + str(names_list) +
+                            ", ...chain_list: " + str(final_evolution_chain_list))
         self.speak_dialog("pokemon.final.evolution", {"pokemon": pokemon_name,
-                                                      "final": self._list_to_str(names_list)})
+                                                      "final": display})
 
     @intent_handler(IntentBuilder("PokemonEvolveFirst").require("Evolve").require("First"))
     def handle_pokemon_evolve_first(self, message):
@@ -327,13 +329,14 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
+        lang = self._lang(message)
         previous_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[0]
         pokemon_name = self._pokemon_name(mon, self._lang(message))
         if not previous_chain:
             self.speak_dialog("pokemon.has.no.previous.evolution", {"pokemon": pokemon_name})
             return
         species = pokemon_species(attr(previous_chain, "species.name"))
-        species_name = self._species_name(species)
+        species_name = self._species_name(species, lang)
         self.speak_dialog("pokemon.evolves.from", {"pokemon": pokemon_name, "from": species_name})
 
     @intent_handler(IntentBuilder("PokemonEvolveIntoIntent").require("Evolve").require("Into"))
@@ -343,20 +346,24 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
+        lang = self._lang(message)
+
         into = attr(find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1], "evolves_to")
         names_into = []
         for evolution in into:
             names_into.append(str(self._species_name(
-                pokemon_species(attr(evolution, "species.name"))
+                pokemon_species(attr(evolution, "species.name")),
+                lang
             )))
 
-        pokemon_name = self._pokemon_name(mon, lang=self._lang(message))
+        pokemon_name = self._pokemon_name(mon, lang)
         if not names_into:
             self.speak_dialog("pokemon.does.not.evolve", {"pokemon": pokemon_name})
             return
 
         self.speak_dialog("pokemon.evolves.into", {"pokemon": pokemon_name,
-                                                   "evolve": self._list_to_str(names_into)})
+                                                   "evolve": self._list_to_str(names_into),
+                                                   "evolve_method": "method"})  # TODO
 
     @intent_handler(IntentBuilder("PokemonFormIntent").require("Form"))
     def handle_pokemon_form(self, message):
@@ -502,7 +509,10 @@ class PokemonSkill(MycroftSkill):
             names_list.append(group_name)
 
         display = self._list_to_str(names_list)
-        self.speak_dialog("pokemon.egg.groups.are", {"pokemon": self._pokemon_name(mon, lang), "groups": display})
+        if not display:
+            raise Exception("display shouldn't be empty. groups: " + str(groups) + ", names_list: " + str(names_list))
+        pokemon_name = self._pokemon_name(mon, lang)
+        self.speak_dialog("pokemon.egg.groups.are", {"pokemon": pokemon_name, "groups": display})
 
     # The "stop" method defines what Mycroft does when told to stop during
     # the skill's execution. In this case, since the skill's functionality
