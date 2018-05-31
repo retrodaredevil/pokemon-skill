@@ -5,7 +5,7 @@ from math import floor
 from adapt.intent import IntentBuilder
 from mycroft.skills.core import MycroftSkill, intent_handler
 from mycroft.util.log import LOG
-from pokebase import pokemon, APIResourceList, pokemon_species
+from pokebase import pokemon, APIResourceList, pokemon_species, evolution_trigger, item, type_, location
 
 
 def base_stat(mon, stat_name):
@@ -151,6 +151,88 @@ class PokemonSkill(MycroftSkill):
         """
         form = mon.forms[0]
         return self._get_name_from_lang(form.form_names, lang) or None
+
+    def _evolution_details_str(self, evolution_details, lang=None):
+        """
+
+        :param evolution_details: Usually a dict
+        :return:
+        """
+        # ==== variables ====
+        trigger = evolution_trigger(evolution_details["trigger"].name)
+        trigger_name = self._get_name_from_lang(trigger.names, lang)
+
+        held_item = evolution_details["held_item"]
+        held_item_display = ""
+        if held_item:
+            held_item_display = " holding" + self._get_name_from_lang(item(held_item).names, lang)  # TODO translate
+
+        min_level = evolution_details["min_level"]  # None or min level
+        min_level_display = ""
+        if min_level:
+            min_level_display = " at level " + str(min_level)
+
+        min_happiness = evolution_details["min_happiness"]  # None or min happiness
+        min_happiness_display = ""
+        if min_happiness:
+            min_happiness_display = " with happiness " + str(min_happiness)
+
+        min_beauty = evolution_details["min_beauty"]
+        min_beauty_display = ""
+        if min_beauty:
+            min_beauty_display = " with beauty level " + str(min_beauty)
+
+        min_affection = evolution_details["min_affection"]
+        min_affection_display = ""
+        if min_affection:
+            min_affection_display = " with affection level " + str(min_affection)
+
+        time_of_day = evolution_details["time_of_day"]  # None or "day" or "night"
+        time_display = ""
+        if time_of_day:
+            time_display = " at " + time_of_day
+
+        gender = evolution_details["gender"]  # None, 1=female, 2=male
+        gender_display = ""
+        if gender:
+            gender_display = " if " + ("female" if gender == 1 else "male")
+
+        party_type_dict = evolution_details["party_type"]
+        party_type_display = ""  # must have this type of pokemon in their party
+        if party_type_dict:
+            party_type = type_(party_type_dict["name"])
+            party_type_display = " with " + self._get_name_from_lang(party_type.names, lang) + " type pokemon in party"
+
+        location_dict = evolution_details["location"]
+        location_display = ""
+        if location_dict:
+            game_location = location(location_dict["name"])
+            location_display = " at " + self._get_name_from_lang(game_location.names, lang)
+
+        needs_rain_display = ""
+        if evolution_details["needs_overworld_rain"]:
+            needs_rain_display = " while it's raining"
+
+        # TODO known_move and known_move_type and party_type and turn_upside_down and translate everything
+
+        # ==== different triggers ====
+        if trigger.name == "shed":
+            return trigger_name
+        elif trigger.name == "use-item":
+            used_item = item(evolution_details["item"]["name"])
+            return trigger_name + " " + self._get_name_from_lang(used_item.names, lang)
+        elif trigger.name == "trade":
+            trade_species_dict = evolution_details["trade_species"]
+            trade_species_display = ""
+            if trade_species_dict:
+                trade_species = pokemon_species(trade_species_dict["name"])
+                trade_species_display = " for " + self._get_name_from_lang(trade_species.names, lang)  # TODO translate
+            return trigger_name + held_item_display + trade_species_display
+
+        # === level up trigger below ===
+
+        return trigger_name + min_level_display + min_happiness_display + min_beauty_display + min_affection_display \
+            + time_display + location_display + needs_rain_display + gender_display + party_type_display
 
     def _extract_pokemon(self, message):
         def alike_amount(pokemon_name):
@@ -335,13 +417,13 @@ class PokemonSkill(MycroftSkill):
             return
 
         lang = self._lang(message)
-        previous_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[0]
+        # previous_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[0]
+        previous_species = mon.species.evolves_from_species
         pokemon_name = self._pokemon_name(mon, self._lang(message))
-        if not previous_chain:
+        if not previous_species:
             self.speak_dialog("pokemon.has.no.previous.evolution", {"pokemon": pokemon_name})
             return
-        species = pokemon_species(attr(previous_chain, "species.name"))
-        species_name = self._species_name(species, lang)
+        species_name = self._species_name(previous_species, lang)
         self.speak_dialog("pokemon.evolves.from", {"pokemon": pokemon_name, "from": species_name})
 
     @intent_handler(IntentBuilder("PokemonEvolveIntoIntent").require("Evolve").require("Into"))
@@ -354,12 +436,18 @@ class PokemonSkill(MycroftSkill):
         lang = self._lang(message)
 
         into = attr(find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1], "evolves_to")
+        should_add_details = len(into) <= 2
         names_into = []
         for evolution in into:
             species = pokemon_species(attr(evolution, "species.name"))
             name = self._species_name(species, lang)
             # LOG.info("species: " + species.name + ", _species_name(): " + name + " lang: " + lang)
-            names_into.append(name)
+            details_display = ""
+            if should_add_details:
+                evolution_details = attr(evolution, "evolution_details")
+                details_display = " by " + self._evolution_details_str(evolution_details, lang)
+
+            names_into.append(name + details_display)
 
         # LOG.info("names_into: " + str(names_into))
         pokemon_name = self._pokemon_name(mon, lang)
@@ -370,8 +458,7 @@ class PokemonSkill(MycroftSkill):
         display = self._list_to_str(names_into)
 
         self.speak_dialog("pokemon.evolves.into", {"pokemon": pokemon_name,
-                                                   "evolve": display,
-                                                   "evolve_method": "method"})  # TODO
+                                                   "evolve": display})
 
     @intent_handler(IntentBuilder("PokemonFormIntent").require("Form"))
     def handle_pokemon_form(self, message):
