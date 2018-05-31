@@ -354,18 +354,22 @@ class PokemonSkill(MycroftSkill):
         into = attr(find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1], "evolves_to")
         names_into = []
         for evolution in into:
-            names_into.append(str(self._species_name(
-                pokemon_species(attr(evolution, "species.name")),
-                lang
-            )))
+            species = pokemon_species(attr(evolution, "species.name"))
+            name = self._species_name(species, lang)
+            LOG.info("species: " + species.name + ", _species_name(): " + name + " lang: " + lang)
+            names_into.append(name)
 
+        LOG.info("names_into: " + str(names_into))
         pokemon_name = self._pokemon_name(mon, lang)
         if not names_into:
             self.speak_dialog("pokemon.does.not.evolve", {"pokemon": pokemon_name})
             return
 
+        display = self._list_to_str(names_into)
+        LOG.info("displaying: " + display)
+
         self.speak_dialog("pokemon.evolves.into", {"pokemon": pokemon_name,
-                                                   "evolve": self._list_to_str(names_into),
+                                                   "evolve": display,
                                                    "evolve_method": "method"})  # TODO
 
     @intent_handler(IntentBuilder("PokemonFormIntent").require("Form"))
