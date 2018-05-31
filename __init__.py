@@ -161,7 +161,7 @@ class PokemonSkill(MycroftSkill):
         :return:
         """
         # ==== variables ====
-        trigger = evolution_trigger(evolution_details["trigger"].name)
+        trigger = evolution_trigger(evolution_details["trigger"]["name"])
         trigger_name = self._get_name_from_lang(trigger.names, lang)
 
         held_item = evolution_details["held_item"]
