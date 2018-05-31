@@ -95,10 +95,12 @@ class PokemonSkill(MycroftSkill):
         return message.data.get("lang", None) or self.lang
 
     def _list_to_str(self, l):
-        last = ""
-        if len(l) >= 2:
-            last = " " + self.translate("and") + " " + l[-1]
-        return ", ".join(l[:-1]) + last
+        length = len(l)
+        if length == 0:
+            return ""
+        elif length == 1:
+            return l[0]
+        return ", ".join(l[:-1]) + " " + self.translate("and") + " " + l[-1]
 
     def _use_english_units(self, message):
         # split = self._lang(message).split("-")
@@ -356,17 +358,16 @@ class PokemonSkill(MycroftSkill):
         for evolution in into:
             species = pokemon_species(attr(evolution, "species.name"))
             name = self._species_name(species, lang)
-            LOG.info("species: " + species.name + ", _species_name(): " + name + " lang: " + lang)
+            # LOG.info("species: " + species.name + ", _species_name(): " + name + " lang: " + lang)
             names_into.append(name)
 
-        LOG.info("names_into: " + str(names_into))
+        # LOG.info("names_into: " + str(names_into))
         pokemon_name = self._pokemon_name(mon, lang)
         if not names_into:
             self.speak_dialog("pokemon.does.not.evolve", {"pokemon": pokemon_name})
             return
 
         display = self._list_to_str(names_into)
-        LOG.info("displaying: " + display)
 
         self.speak_dialog("pokemon.evolves.into", {"pokemon": pokemon_name,
                                                    "evolve": display,
@@ -516,8 +517,6 @@ class PokemonSkill(MycroftSkill):
             names_list.append(group_name)
 
         display = self._list_to_str(names_list)
-        if not display:
-            LOG.error("display shouldn't be empty. groups: " + str(groups) + ", names_list: " + str(names_list))
         pokemon_name = self._pokemon_name(mon, lang)
         self.speak_dialog("pokemon.egg.groups.are", {"pokemon": pokemon_name, "groups": display})
 
