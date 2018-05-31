@@ -167,7 +167,7 @@ class PokemonSkill(MycroftSkill):
         held_item = evolution_details["held_item"]
         held_item_display = ""
         if held_item:
-            held_item_display = " holding" + self._get_name_from_lang(item(held_item).names, lang)  # TODO translate
+            held_item_display = " holding" + self._get_name_from_lang(item(held_item["name"]).names, lang)  # TODO translate
 
         min_level = evolution_details["min_level"]  # None or min level
         min_level_display = ""
