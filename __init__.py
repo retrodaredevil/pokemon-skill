@@ -84,15 +84,12 @@ class PokemonSkill(MycroftSkill):
 
     def __init__(self):
         super(PokemonSkill, self).__init__(name="PokemonSkill")
-        self.pokemon_names = None  # a list of a list of strings where each sublist is the pokemon's name split in words
+        self.pokemon_names = None
         self.last_pokemon = None
 
     def initialize(self):
         if not self.pokemon_names:
             self.pokemon_names = [name for name in APIResourceList("pokemon").names]
-
-    def _lang(self, message):
-        return message.data.get("lang", None) or self.lang
 
     def _list_to_str(self, l, and_str=None):
         length = len(l)
@@ -105,20 +102,16 @@ class PokemonSkill(MycroftSkill):
         return ", ".join(l[:-1]) + " " + and_str + " " + l[-1]
 
     def _use_english_units(self, message):
-        # split = self._lang(message).split("-")
-        # if len(split) >= 2:
-        #     return split[1] == "us"
-        # return False
         # docs on config: https://mycroft.ai/documentation/mycroft-conf/
         unit = self.config_core.get("system_unit")
         if unit != "english" and unit != "metric" and unit != "imperial":
             LOG.error("Unit is unknown. system_unit: " + str(unit))
         return unit == "english" or unit == "imperial"
 
-    def _get_name_from_lang(self, names, lang=None):
+    def _get_name_from_lang(self, names):
         if not names:
             return None
-        lang = (lang or "en-us").split("-")  # lang[0] is language, lang[1] is country
+        lang = self.lang  # lang[0] is language, lang[1] is country
         lang_name = lang[0]
         country = len(lang) > 1 and lang[1] or ""  # use lang[1] as country or "" if lang doesn't have one
 
@@ -136,25 +129,28 @@ class PokemonSkill(MycroftSkill):
 
         return best_name or names[-1].name
 
-    def _pokemon_name(self, mon, lang=None):
+    def _pokemon_name(self, mon):
         """
         :param mon: The pokemon object created with the pokemon method
         :return: A more readable/friendly version of the pokemon's name
         """
-        return self._get_name_from_lang(mon.forms[0].names, lang) or self._species_name(mon.species, lang)
+        return self._get_name_from_lang(mon.forms[0].names) or self._species_name(mon.species)
 
-    def _species_name(self, species, lang=None):
-        return self._get_name_from_lang(species.names, lang) or species.name
+    def _species_name(self, species):
+        return self._get_name_from_lang(species.names) or species.name
 
-    def _form_name(self, mon, lang=None):
+    def _form_name(self, mon):
         """
         :param mon: The pokemon object created with the pokemon method
         :return: A readable/friendly version of the pokemon's form or None if the pokemon isn't in a form
         """
-        form = mon.forms[0]
-        return self._get_name_from_lang(form.form_names, lang) or None
+        forms = mon.forms
+        if not forms:
+            return None  # this could happen in the future, but this shouldn't happen as of right now
+        form = forms[0]
+        return self._get_name_from_lang(form.form_names) or None
 
-    def _evolution_details_str(self, evolution_details, lang=None):
+    def _evolution_details_str(self, evolution_details):
         """
 
         :param evolution_details: Usually a dict
@@ -162,12 +158,12 @@ class PokemonSkill(MycroftSkill):
         """
         # ==== variables ====
         trigger = evolution_trigger(evolution_details["trigger"]["name"])
-        trigger_name = self._get_name_from_lang(trigger.names, lang)
+        trigger_name = self._get_name_from_lang(trigger.names)
 
         held_item = evolution_details["held_item"]
         held_item_display = ""
         if held_item:
-            held_item_display = " holding" + self._get_name_from_lang(item(held_item["name"]).names, lang)  # TODO translate
+            held_item_display = " holding " + self._get_name_from_lang(item(held_item["name"]).names)
 
         min_level = evolution_details["min_level"]  # None or min level
         min_level_display = ""
@@ -203,13 +199,13 @@ class PokemonSkill(MycroftSkill):
         party_type_display = ""  # must have this type of pokemon in their party
         if party_type_dict:
             party_type = type_(party_type_dict["name"])
-            party_type_display = " with " + self._get_name_from_lang(party_type.names, lang) + " type pokemon in party"
+            party_type_display = " with " + self._get_name_from_lang(party_type.names) + " type pokemon in party"
 
         location_dict = evolution_details["location"]
         location_display = ""
         if location_dict:
             game_location = location(location_dict["name"])
-            location_display = " at " + self._get_name_from_lang(game_location.names, lang)
+            location_display = " at " + self._get_name_from_lang(game_location.names)
 
         needs_rain_display = ""
         if evolution_details["needs_overworld_rain"]:
@@ -222,19 +218,23 @@ class PokemonSkill(MycroftSkill):
             return trigger_name
         elif trigger.name == "use-item":
             used_item = item(evolution_details["item"]["name"])
-            return trigger_name + " " + self._get_name_from_lang(used_item.names, lang)
+            return trigger_name + " " + self._get_name_from_lang(used_item.names)
         elif trigger.name == "trade":
             trade_species_dict = evolution_details["trade_species"]
             trade_species_display = ""
             if trade_species_dict:
                 trade_species = pokemon_species(trade_species_dict["name"])
-                trade_species_display = " for " + self._get_name_from_lang(trade_species.names, lang)  # TODO translate
+                trade_species_display = " for " + self._get_name_from_lang(trade_species.names)  # TODO translate
             return trigger_name + held_item_display + trade_species_display
 
         # === level up trigger below ===
+        level_up_display = trigger_name
+        if min_level_display:
+            level_up_display = min_level_display
 
-        return trigger_name + min_level_display + min_happiness_display + min_beauty_display + min_affection_display \
-            + time_display + location_display + needs_rain_display + gender_display + party_type_display
+        return level_up_display + held_item_display + min_happiness_display + min_beauty_display \
+            + min_affection_display + time_display + location_display + needs_rain_display + gender_display \
+            + party_type_display
 
     def _extract_pokemon(self, message):
         def alike_amount(pokemon_name):
@@ -265,20 +265,19 @@ class PokemonSkill(MycroftSkill):
         name = None
         alike = 0
 
-        i = 0
         for name_element in self.pokemon_names:
             amount = alike_amount(name_element)
             if amount > alike:
                 name = name_element
                 alike = amount
 
-            i += 1
-            # if i >= 50:  # in early states of development, make debugging easier
-            #     break
-
         if not name:
             return None
-        return pokemon(name)
+        try:
+            return pokemon(name)
+        except ValueError:
+            LOG.error("Couldn't find pokemon with name: '" + str(name) + "' alike is: " + str(alike))
+            raise
 
     def _check_pokemon(self, mon):
         """
@@ -344,24 +343,26 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        types = mon.types
+        names = []
+        for type_slot in sorted(mon.types, key=lambda x: x.slot):
+            pokemon_type = type_slot.type
+            names.append(self._get_name_from_lang(pokemon_type.names))
 
-        pokemon_name = self._pokemon_name(mon, self._lang(message))
-        if len(types) == 1:
-            self.speak_dialog("pokemon.type.one", {"pokemon": pokemon_name, "type1": types[0].type.name})
+        pokemon_name = self._pokemon_name(mon)
+        if len(names) == 1:
+            self.speak_dialog("pokemon.type.one", {"pokemon": pokemon_name, "type1": names[0]})
         else:
-            self.speak_dialog("pokemon.type.two", {"pokemon": pokemon_name, "type1": types[0].type.name,
-                                                   "type2": types[1].type.name})
+            self.speak_dialog("pokemon.type.two", {"pokemon": pokemon_name, "type1": names[0],
+                                                   "type2": names[1]})
 
-    @intent_handler(IntentBuilder("PokemonEvolveFinal").require("Evolve").require("final"))
+    @intent_handler(IntentBuilder("PokemonEvolveFinal").require("Evolve").require("Final"))
     def handle_pokemon_evolve_final(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
         if not mon:
             return
 
-        lang = self._lang(message)
-        pokemon_name = self._pokemon_name(mon, lang)
+        pokemon_name = self._pokemon_name(mon)
 
         species_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1]
         final_evolution_chain_list = find_final_species_chains(species_chain)
@@ -379,7 +380,7 @@ class PokemonSkill(MycroftSkill):
 
         names_list = []
         for evolution_chain in final_evolution_chain_list:
-            name = self._species_name(pokemon_species(attr(evolution_chain, "species.name")), lang)
+            name = self._species_name(pokemon_species(attr(evolution_chain, "species.name")))
             names_list.append(name)
         display = self._list_to_str(names_list)
         if not display:
@@ -395,8 +396,7 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        lang = self._lang(message)
-        pokemon_name = self._pokemon_name(mon, lang)
+        pokemon_name = self._pokemon_name(mon)
 
         evolution_chain = mon.species.evolution_chain.chain
         species = evolution_chain.species
@@ -407,7 +407,7 @@ class PokemonSkill(MycroftSkill):
             else:
                 self.speak_dialog("pokemon.is.in.first.evolution", {"pokemon": pokemon_name})
                 return
-        species_name = self._species_name(species, lang)
+        species_name = self._species_name(species)
 
         self.speak_dialog("pokemon.first.evolution.is", {"pokemon": pokemon_name, "first": species_name})
 
@@ -418,14 +418,13 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        lang = self._lang(message)
         # previous_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[0]
         previous_species = mon.species.evolves_from_species
-        pokemon_name = self._pokemon_name(mon, self._lang(message))
+        pokemon_name = self._pokemon_name(mon)
         if not previous_species:
             self.speak_dialog("pokemon.has.no.previous.evolution", {"pokemon": pokemon_name})
             return
-        species_name = self._species_name(previous_species, lang)
+        species_name = self._species_name(previous_species)
         self.speak_dialog("pokemon.evolves.from", {"pokemon": pokemon_name, "from": species_name})
 
     @intent_handler(IntentBuilder("PokemonEvolveIntoIntent").require("Evolve").require("Into"))
@@ -435,32 +434,30 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        lang = self._lang(message)
-
         into = attr(find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1], "evolves_to")
         should_add_details = len(into) <= 2
         names_into = []
         for evolution in into:
             species = pokemon_species(attr(evolution, "species.name"))
-            name = self._species_name(species, lang)
+            name = self._species_name(species)
             # LOG.info("species: " + species.name + ", _species_name(): " + name + " lang: " + lang)
             details_display = ""
             if should_add_details:
                 evolution_details_list = attr(evolution, "evolution_details")
                 evolution_details_str_list = []
                 for evolution_details in evolution_details_list:
-                    evolution_details_str_list.append(self._evolution_details_str(evolution_details, lang))
-                details_display = " by " + self._list_to_str(evolution_details_str_list, and_str="or")
+                    evolution_details_str_list.append(self._evolution_details_str(evolution_details))
+                details_display = " by " + self._list_to_str(evolution_details_str_list, and_str=self.translate("or"))
 
             names_into.append(name + details_display)
 
         # LOG.info("names_into: " + str(names_into))
-        pokemon_name = self._pokemon_name(mon, lang)
+        pokemon_name = self._pokemon_name(mon)
         if not names_into:
             self.speak_dialog("pokemon.does.not.evolve", {"pokemon": pokemon_name})
             return
 
-        display = self._list_to_str(names_into)
+        display = self._list_to_str(names_into, and_str=self.translate(". or ."))
 
         self.speak_dialog("pokemon.evolves.into", {"pokemon": pokemon_name,
                                                    "evolve": display})
@@ -472,14 +469,31 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        lang = self._lang(message)
-        pokemon_name = self._pokemon_name(mon, lang)
-        form_name = self._form_name(mon, lang)
+        pokemon_name = self._pokemon_name(mon)
+        form_name = self._form_name(mon)
         if not form_name:
             self.speak_dialog("pokemon.has.no.forms", {"pokemon": pokemon_name})
             return
 
         self.speak_dialog("pokemon.is.in.form", {"pokemon": pokemon_name, "form": form_name})
+
+    def do_pokemon_version_introduced(self, mon):
+        forms = mon.forms
+        if not forms:  # very unlikely, but we'll put it here anyway
+            LOG.error("User asked for version introduced, we are giving them the generation instead.")
+            self.do_pokemon_generation(mon)
+            return
+        version_group = forms[0].version_group
+
+    def do_pokemon_generation_introduced(self, mon):
+        generation = mon.species.generation
+
+    @intent_handler(IntentBuilder("PokemonGenerationIntroduced").require("Generation"))
+    def handle_generation_introduced(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
 
     def do_pokemon_base(self, message, stat):
         mon = self._extract_pokemon(message)
@@ -488,7 +502,7 @@ class PokemonSkill(MycroftSkill):
             return
 
         value = base_stat(mon, stat)
-        self.speak_dialog("base.stat.is", {"pokemon": self._pokemon_name(mon, self._lang(message)),
+        self.speak_dialog("base.stat.is", {"pokemon": self._pokemon_name(mon),
                                            "stat": stat, "value": value})
 
     @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Speed")
@@ -528,9 +542,8 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        lang = self._lang(message)
-        color_name = self._get_name_from_lang(mon.species.color.names, lang)
-        pokemon_name = self._pokemon_name(mon, lang)
+        color_name = self._get_name_from_lang(mon.species.color.names)
+        pokemon_name = self._pokemon_name(mon)
 
         self.speak_dialog("pokemon.color.is", {"pokemon": pokemon_name, "color": color_name})
 
@@ -541,9 +554,8 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        lang = self._lang(message)
-        shape_name = self._get_name_from_lang(mon.species.shape.names, lang)
-        pokemon_name = self._pokemon_name(mon, lang)
+        shape_name = self._get_name_from_lang(mon.species.shape.names)
+        pokemon_name = self._pokemon_name(mon)
 
         self.speak_dialog("pokemon.shape.is", {"pokemon": pokemon_name, "shape": shape_name})
 
@@ -554,9 +566,8 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        lang = self._lang(message)
-        habitat_name = self._get_name_from_lang(mon.species.habitat.names, lang)
-        pokemon_name = self._pokemon_name(mon, lang)
+        habitat_name = self._get_name_from_lang(mon.species.habitat.names)
+        pokemon_name = self._pokemon_name(mon)
 
         self.speak_dialog("pokemon.lives.in", {"pokemon": pokemon_name, "habitat": habitat_name})
 
@@ -566,8 +577,7 @@ class PokemonSkill(MycroftSkill):
         mon = self._check_pokemon(mon)
         if not mon:
             return
-        lang = self._lang(message)
-        pokemon_name = self._pokemon_name(mon, lang)
+        pokemon_name = self._pokemon_name(mon)
         happiness = mon.species.base_happiness
         self.speak_dialog("base.stat.is", {"pokemon": pokemon_name, "stat": "happiness", "value": str(happiness)})
 
@@ -577,8 +587,7 @@ class PokemonSkill(MycroftSkill):
         mon = self._check_pokemon(mon)
         if not mon:
             return
-        lang = self._lang(message)
-        pokemon_name = self._pokemon_name(mon, lang)
+        pokemon_name = self._pokemon_name(mon)
         experience = mon.base_experience
         self.speak_dialog("base.stat.is", {"pokemon": pokemon_name, "stat": "experience", "value": str(experience)})
 
@@ -588,8 +597,7 @@ class PokemonSkill(MycroftSkill):
         mon = self._check_pokemon(mon)
         if not mon:
             return
-        lang = self._lang(message)
-        pokemon_name = self._pokemon_name(mon, lang)
+        pokemon_name = self._pokemon_name(mon)
         capture_rate = mon.species.capture_rate
         self.speak_dialog("pokemon.capture.rate", {"pokemon": pokemon_name, "rate": capture_rate})
 
@@ -600,16 +608,14 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        lang = self._lang(message)
-
         groups = mon.species.egg_groups
         names_list = []
         for group in groups:
-            group_name = self._get_name_from_lang(group.names, lang)
+            group_name = self._get_name_from_lang(group.names)
             names_list.append(group_name)
 
         display = self._list_to_str(names_list)
-        pokemon_name = self._pokemon_name(mon, lang)
+        pokemon_name = self._pokemon_name(mon)
         self.speak_dialog("pokemon.egg.groups.are", {"pokemon": pokemon_name, "groups": display})
 
     # The "stop" method defines what Mycroft does when told to stop during
