@@ -90,6 +90,9 @@ class PokemonSkill(MycroftSkill):
     def initialize(self):
         if not self.pokemon_names:
             self.pokemon_names = [name for name in APIResourceList("pokemon").names]
+            # print("going to init names")
+            # self.pokemon_names = [self._get_name_from_lang(mon.names) for mon in APIResourceList("pokemon")]
+            # print("done")
 
     def _list_to_str(self, l, and_str=None):
         length = len(l)
@@ -111,7 +114,9 @@ class PokemonSkill(MycroftSkill):
     def _get_name_from_lang(self, names):
         if not names:
             return None
-        lang = self.lang  # lang[0] is language, lang[1] is country
+        lang = self.lang
+        if isinstance(lang, str):
+            lang = lang.split("-")
         lang_name = lang[0]
         country = len(lang) > 1 and lang[1] or ""  # use lang[1] as country or "" if lang doesn't have one
 
@@ -154,16 +159,18 @@ class PokemonSkill(MycroftSkill):
         """
 
         :param evolution_details: Usually a dict
-        :return:
+        :return: A string representing events needed to happen to evolve based on evolution_details
         """
         # ==== variables ====
         trigger = evolution_trigger(evolution_details["trigger"]["name"])
         trigger_name = self._get_name_from_lang(trigger.names)
+        if trigger_name:
+            trigger_name = "by " + trigger_name
 
         held_item = evolution_details["held_item"]
         held_item_display = ""
         if held_item:
-            held_item_display = " holding " + self._get_name_from_lang(item(held_item["name"]).names)
+            held_item_display = " by holding " + self._get_name_from_lang(item(held_item["name"]).names)
 
         min_level = evolution_details["min_level"]  # None or min level
         min_level_display = ""
@@ -266,12 +273,16 @@ class PokemonSkill(MycroftSkill):
         alike = 0
 
         for name_element in self.pokemon_names:
-            amount = alike_amount(name_element)
+            name_split = name_element.split("-")
+            amount = .25 * sum(alike_amount(name) for name in name_split) + alike_amount(name_element)
+            # amount = alike_amount(name_element)
             if amount > alike:
                 name = name_element
                 alike = amount
 
-        if not name:
+        LOG.info("name: " + name + " alike: " + str(alike))
+
+        if not name or alike <= .3:
             return None
         try:
             return pokemon(name)
@@ -418,14 +429,23 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        # previous_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[0]
+        previous_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[0]
+        how = ""
+        for evolution in attr(previous_chain, "evolves_to"):
+            if attr(evolution, "species.name") == mon.species.name:
+                details_list = attr(evolution, "evolution_details")
+                how_str_list = []
+                for details in details_list:
+                    how_str_list.append(self._evolution_details_str(details))
+                how = self._list_to_str(how_str_list)
+                break
         previous_species = mon.species.evolves_from_species
         pokemon_name = self._pokemon_name(mon)
         if not previous_species:
             self.speak_dialog("pokemon.has.no.previous.evolution", {"pokemon": pokemon_name})
             return
         species_name = self._species_name(previous_species)
-        self.speak_dialog("pokemon.evolves.from", {"pokemon": pokemon_name, "from": species_name})
+        self.speak_dialog("pokemon.evolves.from", {"pokemon": pokemon_name, "from": species_name, "how": how})
 
     @intent_handler(IntentBuilder("PokemonEvolveIntoIntent").require("Evolve").require("Into"))
     def handle_pokemon_evolve_into(self, message):
@@ -434,7 +454,14 @@ class PokemonSkill(MycroftSkill):
         if not mon:
             return
 
-        into = attr(find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1], "evolves_to")
+        pokemon_name = self._pokemon_name(mon)
+
+        species_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1]
+        if not species_chain:
+            self.speak_dialog("pokemon.does.not.evolve", {"pokemon": pokemon_name})
+            return
+
+        into = attr(species_chain, "evolves_to")
         should_add_details = len(into) <= 2
         names_into = []
         for evolution in into:
@@ -447,12 +474,11 @@ class PokemonSkill(MycroftSkill):
                 evolution_details_str_list = []
                 for evolution_details in evolution_details_list:
                     evolution_details_str_list.append(self._evolution_details_str(evolution_details))
-                details_display = " by " + self._list_to_str(evolution_details_str_list, and_str=self.translate("or"))
+                details_display = self._list_to_str(evolution_details_str_list, and_str=self.translate("or"))
 
             names_into.append(name + details_display)
 
         # LOG.info("names_into: " + str(names_into))
-        pokemon_name = self._pokemon_name(mon)
         if not names_into:
             self.speak_dialog("pokemon.does.not.evolve", {"pokemon": pokemon_name})
             return
@@ -479,21 +505,24 @@ class PokemonSkill(MycroftSkill):
 
     def do_pokemon_version_introduced(self, mon):
         forms = mon.forms
-        if not forms:  # very unlikely, but we'll put it here anyway
-            LOG.error("User asked for version introduced, we are giving them the generation instead.")
-            self.do_pokemon_generation(mon)
-            return
+        if not forms:
+            raise Exception("mon.forms is None or empty! forms: " + str(forms))
         version_group = forms[0].version_group
+        versions = version_group.versions
+        version_names = [self._get_name_from_lang(version.names) for version in versions]
+        self.speak_dialog("pokemon.version.introduced", {
+            "pokemon": self._pokemon_name(mon),
+            "versions": self._list_to_str(version_names),
+            "generation": version_group.generation.id
+        })
 
-    def do_pokemon_generation_introduced(self, mon):
-        generation = mon.species.generation
-
-    @intent_handler(IntentBuilder("PokemonGenerationIntroduced").require("Generation"))
+    @intent_handler(IntentBuilder("PokemonGenerationIntroduced").require("Game").require("Introduced"))
     def handle_generation_introduced(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
         if not mon:
             return
+        self.do_pokemon_version_introduced(mon)
 
     def do_pokemon_base(self, message, stat):
         mon = self._extract_pokemon(message)
