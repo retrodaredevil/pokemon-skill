@@ -1,13 +1,10 @@
-To submit your skill, replace this file with text from 
-https://rawgit.com/MycroftAI/mycroft-skills/master/meta_editor.html
+# <img src='https://raw.githack.com/FortAwesome/Font-Awesome/master/svgs/solid/robot.svg' card_color='#40DBB0' width='50' height='50' style='vertical-align:bottom'/>
+ Pokemon Skill
+Aids you on your journey as a Pokemon Trainer
 
+## About 
+With this skill, you can ask Mycroft many different facts about Pokemon. The things you can ask it range from useful statistics such as when a Pokemon evolves or how effective a move is to a Pokemon's weight.
 
-## Pokemon Skill
-Tells you information helpful to a pokemon trainer
-
-## Description 
-A WIP skill that aims to give helpful information such as evolutions, types,
-moves and other pokemon related things.
 
 ## Examples
 * "What type is Pikachu?"
@@ -20,6 +17,19 @@ moves and other pokemon related things.
 * "What does Charizard evolve from?"
 * "How effective is a ground move against Pikachu?"
 * "What generation was Pichu introduced in?"
+* "What abilities does Pikachu have?"
+* "What does the pokedex say about the static ability in emerald?"
+* "Give me some info about the ability Static"
+* "Give me some detailed information about the ability Static"
 
 ## Credits 
-retrodaredevil or Josh Shannon
+Joshua Shannon (@retrodaredevil)
+
+
+
+## Category
+Entertainment
+**Information**
+
+## Tags
+#Pokemon

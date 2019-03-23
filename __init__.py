@@ -5,7 +5,11 @@ from math import floor
 from adapt.intent import IntentBuilder
 from mycroft.skills.core import MycroftSkill, intent_handler
 from mycroft.util.log import LOG
-from pokebase import pokemon, APIResourceList, pokemon_species, evolution_trigger, item, type_, location
+from pokebase import pokemon, APIResourceList, pokemon_species, evolution_trigger, item, type_, location, ability, \
+    version
+
+
+__author__ = "retrodaredevil"
 
 
 def base_stat(mon, stat_name):
@@ -88,15 +92,21 @@ class PokemonSkill(MycroftSkill):
         """A list of strings representing all pokemon names. These are always in english and are not 
         display-friendly. e.g.: rattata-alola"""
         self.type_names = None
+        self.version_names = None
+        self.ability_names = None
         self.last_pokemon = None
         self.last_generation = None
         """An int representing the last generation"""
 
     def initialize(self):
         if not self.pokemon_names:
-            self.pokemon_names = [name for name in APIResourceList("pokemon").names]
+            self.pokemon_names = list(APIResourceList("pokemon").names)
         if not self.type_names:
-            self.type_names = [name for name in APIResourceList("type").names]
+            self.type_names = list(APIResourceList("type").names)
+        if not self.version_names:
+            self.version_names = list(APIResourceList("version").names)
+        if not self.ability_names:
+            self.ability_names = list(APIResourceList("ability").names)
 
     def _list_to_str(self, l, and_str=None):
         length = len(l)
@@ -120,14 +130,21 @@ class PokemonSkill(MycroftSkill):
             LOG.error("Unit is unknown. system_unit: " + str(unit))
         return unit == "english" or unit == "imperial"
 
-    def _get_name_from_lang(self, names):
-        if not names:
-            return None
+    def _get_lang(self):
+        """
+        :return: A tuple where [0] is the language name code and [1] is the country. [1] may be an empty string
+        """
         lang = self.lang
         if isinstance(lang, str):
             lang = lang.split("-")
         lang_name = lang[0]
         country = len(lang) > 1 and lang[1] or ""  # use lang[1] as country or "" if lang doesn't have one
+        return lang_name, country
+
+    def _get_name_from_lang(self, names):
+        if not names:
+            return None
+        lang_name, country = self._get_lang()
 
         best_name = None
         for name in names:
@@ -254,6 +271,12 @@ class PokemonSkill(MycroftSkill):
 
     @staticmethod
     def _extract_name(message, names):
+        """
+        Gets the string that appeared most accurately in message.
+        :param message: The message object
+        :param names: A list of strings
+        :return: One of the elements in names or None.
+        """
         def alike_amount(pokemon_name):
             """
             :param pokemon_name: Name of the pokemon as a string
@@ -314,6 +337,16 @@ class PokemonSkill(MycroftSkill):
             return type_(name)
         except ValueError:
             LOG.error("Couldn't find type with name: '" + str(name))
+            raise
+
+    def _extract_ability(self, message):
+        name = self.__class__._extract_name(message, self.ability_names)
+        if not name:
+            return None
+        try:
+            return ability(name)
+        except ValueError:
+            LOG.error("Couldn't find ability with name: '" + str(name))
             raise
 
     def _check_pokemon(self, mon):
@@ -546,12 +579,23 @@ class PokemonSkill(MycroftSkill):
             "generation": generation_id
         })
 
+    def do_ability_generation_introduced(self, ability):
+        generation_id = ability.generation.id
+        self.last_generation = generation_id
+        name = self._get_name_from_lang(ability.names)
+        self.speak_dialog("ability.generation.introduced", {"ability": name, "generation": generation_id})
+
     @intent_handler(IntentBuilder("PokemonGenerationIntroduced").optionally("Game").require("Introduced"))
     def handle_generation_introduced(self, message):
         mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
         if not mon:
-            return
+            ability = self._extract_ability(message)
+            if ability:
+                self.do_ability_generation_introduced(ability)
+                return
+            mon = self._check_pokemon(mon)
+            if not mon:
+                return
         self.do_pokemon_version_introduced(mon)
 
     def do_pokemon_base(self, message, stat):
@@ -694,15 +738,12 @@ class PokemonSkill(MycroftSkill):
         for type_slot in sorted(mon.types, key=lambda x: x.slot):
             pokemon_type = type_slot.type
             damage = pokemon_type.damage_relations
-            no_damage = [t["name"] for t in damage.no_damage_from]
-            double = [t["name"] for t in damage.double_damage_from]
-            half = [t["name"] for t in damage.half_damage_from]
-            if type_name in no_damage:
+            if type_name in (t["name"] for t in damage.no_damage_from):
                 effectiveness = None
                 break
-            elif type_name in double:
+            elif type_name in (t["name"] for t in damage.double_damage_from):
                 effectiveness += 1
-            elif type_name in half:
+            elif type_name in (t["name"] for t in damage.half_damage_from):
                 effectiveness -= 1
 
         speak_dict = {
@@ -717,6 +758,85 @@ class PokemonSkill(MycroftSkill):
             self.speak_dialog("type.is.half", speak_dict)
         else:
             self.speak_dialog("type.is.super", speak_dict)
+
+    def do_flavor_text(self, ability, version_name=None):
+        lang_name = self._get_lang()[0]
+        text = None
+        for flavor_text in ability.flavor_text_entries:
+            is_lang_correct = flavor_text.language.name == lang_name
+            if is_lang_correct or not text:
+                if not version_name or any(v.name == version_name for v in flavor_text.version_group.versions):
+                    text = flavor_text.flavor_text
+                    if is_lang_correct:
+                        break
+        if text:
+            self.speak_dialog("ability.flavor.text", {"ability": self._get_name_from_lang(ability.names),
+                                                      "info": text})
+        else:
+            ability_version = version(version_name)
+            self.speak_dialog("ability.not.in.version",
+                              {"ability": self._get_name_from_lang(ability.names),
+                               "version": self._get_name_from_lang(ability_version.names)})
+
+    @intent_handler(IntentBuilder("PokemonAbility").require("Ability")
+                    .optionally("AbilityFlavorText")
+                    .optionally("AbilityEffectEntry").optionally("AbilityEffectEntryShort"))
+    def handle_pokemon_ability(self, message):
+        mon = self._extract_pokemon(message)
+        is_flavor_text = bool(message.data.get("AbilityFlavorText"))
+        is_effect_entry = bool(message.data.get("AbilityEffectEntry"))
+        is_effect_entry_short = bool(message.data.get("AbilityEffectEntryShort"))
+        if not mon or is_flavor_text or is_effect_entry or is_effect_entry_short:
+            ability = self._extract_ability(message)
+            if ability:  # if the user said something with a known ability in it, they may want to know more about it
+                version_name = self.__class__._extract_name(message, self.version_names)
+                if is_flavor_text or (not is_effect_entry and not is_effect_entry_short):
+                    self.do_flavor_text(ability, version_name)
+                else:
+                    key = "short_effect" if (is_effect_entry_short or not is_effect_entry) else "effect"
+                    text = None
+                    lang_name = self._get_lang()[0]
+                    for effect_entry in ability.effect_entries:
+                        is_correct_lang = effect_entry.language.name == lang_name
+                        if is_correct_lang or not text:
+                            text = attr(effect_entry, key)
+                            if is_correct_lang:
+                                break
+                    if not text:
+                        raise Exception("The ability didn't have effect_entries? ability.effect_entries: "
+                                        + str(ability.effect_entries))
+                    self.speak_dialog("ability.effect.entry", {"ability": self._get_name_from_lang(ability.names),
+                                                               "info": text})
+                return
+            mon = self._check_pokemon(mon)
+            if not mon:
+                return
+
+        normal_abilities = []
+        hidden_abilities = []
+        for ability in sorted(mon.abilities, key=lambda x: x.slot):
+            name = self._get_name_from_lang(ability.ability.names)
+            if ability.is_hidden:
+                hidden_abilities.append(name)
+            else:
+                normal_abilities.append(name)
+
+        pokemon_name = self._pokemon_name(mon)
+
+        if not normal_abilities and not hidden_abilities:
+            self.speak_dialog("pokemon.abilities.none")
+        elif not normal_abilities:  # only hidden
+            self.speak_dialog("pokemon.abilities.hidden", {"pokemon": pokemon_name,
+                                                           "hidden_abilities": self._list_to_str(hidden_abilities)})
+        elif not hidden_abilities:
+            self.speak_dialog("pokemon.abilities.non-hidden", {"pokemon": pokemon_name,
+                                                               "abilities": self._list_to_str(normal_abilities)})
+        else:  # has both
+            self.speak_dialog("pokemon.abilities.hidden.non-hidden", {
+                "pokemon": pokemon_name,
+                "abilities": self._list_to_str(normal_abilities),
+                "hidden_abilities": self._list_to_str(hidden_abilities)
+            })
 
 
     # The "stop" method defines what Mycroft does when told to stop during
