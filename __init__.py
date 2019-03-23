@@ -40,7 +40,7 @@ def find_species_chain(chain, name_of_species):
         if attr(evolution_chain, "species.name") == name_of_species:
             return chain, evolution_chain
         r = find_species_chain(evolution_chain, name_of_species)
-        if r:
+        if r[0] and r[1]:
             return r
 
     return None, None
@@ -85,14 +85,18 @@ class PokemonSkill(MycroftSkill):
     def __init__(self):
         super(PokemonSkill, self).__init__(name="PokemonSkill")
         self.pokemon_names = None
+        """A list of strings representing all pokemon names. These are always in english and are not 
+        display-friendly. e.g.: rattata-alola"""
+        self.type_names = None
         self.last_pokemon = None
+        self.last_generation = None
+        """An int representing the last generation"""
 
     def initialize(self):
         if not self.pokemon_names:
             self.pokemon_names = [name for name in APIResourceList("pokemon").names]
-            # print("going to init names")
-            # self.pokemon_names = [self._get_name_from_lang(mon.names) for mon in APIResourceList("pokemon")]
-            # print("done")
+        if not self.type_names:
+            self.type_names = [name for name in APIResourceList("type").names]
 
     def _list_to_str(self, l, and_str=None):
         length = len(l)
@@ -106,6 +110,11 @@ class PokemonSkill(MycroftSkill):
 
     def _use_english_units(self, message):
         # docs on config: https://mycroft.ai/documentation/mycroft-conf/
+        if message.data.get("EnglishWeight") or message.data.get("EnglishLength"):
+            return True
+        if message.data.get("MetricWeight") or message.data.get("MetricLength"):
+            return False
+
         unit = self.config_core.get("system_unit")
         if unit != "english" and unit != "metric" and unit != "imperial":
             LOG.error("Unit is unknown. system_unit: " + str(unit))
@@ -165,7 +174,7 @@ class PokemonSkill(MycroftSkill):
         trigger = evolution_trigger(evolution_details["trigger"]["name"])
         trigger_name = self._get_name_from_lang(trigger.names)
         if trigger_name:
-            trigger_name = "by " + trigger_name
+            trigger_name = " by " + trigger_name
 
         held_item = evolution_details["held_item"]
         held_item_display = ""
@@ -243,7 +252,8 @@ class PokemonSkill(MycroftSkill):
             + min_affection_display + time_display + location_display + needs_rain_display + gender_display \
             + party_type_display
 
-    def _extract_pokemon(self, message):
+    @staticmethod
+    def _extract_name(message, names):
         def alike_amount(pokemon_name):
             """
             :param pokemon_name: Name of the pokemon as a string
@@ -272,7 +282,7 @@ class PokemonSkill(MycroftSkill):
         name = None
         alike = 0
 
-        for name_element in self.pokemon_names:
+        for name_element in names:
             name_split = name_element.split("-")
             amount = .25 * sum(alike_amount(name) for name in name_split) + alike_amount(name_element)
             # amount = alike_amount(name_element)
@@ -280,14 +290,30 @@ class PokemonSkill(MycroftSkill):
                 name = name_element
                 alike = amount
 
-        LOG.info("name: " + name + " alike: " + str(alike))
+        # LOG.info("name: " + name + " alike: " + str(alike))
 
-        if not name or alike <= .3:
+        if not name or alike <= 1.0:
+            return None
+        return name
+
+    def _extract_pokemon(self, message):
+        name = self.__class__._extract_name(message, self.pokemon_names)
+        if not name:
             return None
         try:
             return pokemon(name)
         except ValueError:
-            LOG.error("Couldn't find pokemon with name: '" + str(name) + "' alike is: " + str(alike))
+            LOG.error("Couldn't find pokemon with name: '" + str(name))
+            raise
+
+    def _extract_type(self, message):
+        name = self.__class__._extract_name(message, self.type_names)
+        if not name:
+            return None
+        try:
+            return type_(name)
+        except ValueError:
+            LOG.error("Couldn't find type with name: '" + str(name))
             raise
 
     def _check_pokemon(self, mon):
@@ -313,7 +339,8 @@ class PokemonSkill(MycroftSkill):
 
         self.speak_dialog("pokemon.id.is", {"pokemon": self._pokemon_name(mon), "id": str(mon.species.id)})
 
-    @intent_handler(IntentBuilder("PokemonWeightIntent").require("Weight"))
+    @intent_handler(IntentBuilder("PokemonWeightIntent").require("Weight")
+                    .optionally("EnglishWeight").optionally("MetricWeight"))
     def handle_pokemon_weight(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -328,7 +355,8 @@ class PokemonSkill(MycroftSkill):
 
         self.speak_dialog("pokemon.weighs", {"pokemon": self._pokemon_name(mon), "weight": display})
 
-    @intent_handler(IntentBuilder("PokemonHeightIntent").require("Height"))
+    @intent_handler(IntentBuilder("PokemonHeightIntent").require("Height")
+                    .optionally("EnglishLength").optionally("MetricLength"))
     def handle_pokemon_height(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -365,6 +393,8 @@ class PokemonSkill(MycroftSkill):
         else:
             self.speak_dialog("pokemon.type.two", {"pokemon": pokemon_name, "type1": names[0],
                                                    "type2": names[1]})
+            if len(names) > 2:
+                LOG.info("This pokemon has more than two types??? names: " + str(names) + " pokemon: " + pokemon_name)
 
     @intent_handler(IntentBuilder("PokemonEvolveFinal").require("Evolve").require("Final"))
     def handle_pokemon_evolve_final(self, message):
@@ -467,7 +497,6 @@ class PokemonSkill(MycroftSkill):
         for evolution in into:
             species = pokemon_species(attr(evolution, "species.name"))
             name = self._species_name(species)
-            # LOG.info("species: " + species.name + ", _species_name(): " + name + " lang: " + lang)
             details_display = ""
             if should_add_details:
                 evolution_details_list = attr(evolution, "evolution_details")
@@ -478,7 +507,6 @@ class PokemonSkill(MycroftSkill):
 
             names_into.append(name + details_display)
 
-        # LOG.info("names_into: " + str(names_into))
         if not names_into:
             self.speak_dialog("pokemon.does.not.evolve", {"pokemon": pokemon_name})
             return
@@ -510,13 +538,15 @@ class PokemonSkill(MycroftSkill):
         version_group = forms[0].version_group
         versions = version_group.versions
         version_names = [self._get_name_from_lang(version.names) for version in versions]
+        generation_id = version_group.generation.id
+        self.last_generation = generation_id
         self.speak_dialog("pokemon.version.introduced", {
             "pokemon": self._pokemon_name(mon),
             "versions": self._list_to_str(version_names),
-            "generation": version_group.generation.id
+            "generation": generation_id
         })
 
-    @intent_handler(IntentBuilder("PokemonGenerationIntroduced").require("Game").require("Introduced"))
+    @intent_handler(IntentBuilder("PokemonGenerationIntroduced").optionally("Game").require("Introduced"))
     def handle_generation_introduced(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -646,6 +676,48 @@ class PokemonSkill(MycroftSkill):
         display = self._list_to_str(names_list)
         pokemon_name = self._pokemon_name(mon)
         self.speak_dialog("pokemon.egg.groups.are", {"pokemon": pokemon_name, "groups": display})
+
+    @intent_handler(IntentBuilder("TypeEffectiveness").require("Effective").optionally("Against").optionally("Move"))
+    def handle_type_effectiveness(self, message):
+        mon = self._extract_pokemon(message)
+        mon = self._check_pokemon(mon)
+        if not mon:
+            return
+
+        desired_type = self._extract_type(message)
+        if not desired_type:
+            self.speak_dialog("no.type.specified")
+            return
+        type_name = desired_type.name
+
+        effectiveness = 0
+        for type_slot in sorted(mon.types, key=lambda x: x.slot):
+            pokemon_type = type_slot.type
+            damage = pokemon_type.damage_relations
+            no_damage = [t["name"] for t in damage.no_damage_from]
+            double = [t["name"] for t in damage.double_damage_from]
+            half = [t["name"] for t in damage.half_damage_from]
+            if type_name in no_damage:
+                effectiveness = None
+                break
+            elif type_name in double:
+                effectiveness += 1
+            elif type_name in half:
+                effectiveness -= 1
+
+        speak_dict = {
+            "type": self._get_name_from_lang(type_(type_name).names),
+            "pokemon": self._pokemon_name(mon)
+        }
+        if effectiveness is None:
+            self.speak_dialog("type.is.none", speak_dict)
+        elif effectiveness == 0:
+            self.speak_dialog("type.is.normal", speak_dict)
+        elif effectiveness < 0:
+            self.speak_dialog("type.is.half", speak_dict)
+        else:
+            self.speak_dialog("type.is.super", speak_dict)
+
 
     # The "stop" method defines what Mycroft does when told to stop during
     # the skill's execution. In this case, since the skill's functionality
