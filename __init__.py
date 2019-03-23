@@ -109,6 +109,7 @@ class PokemonSkill(MycroftSkill):
             self.ability_names = list(APIResourceList("ability").names)
 
     def _list_to_str(self, l, and_str=None):
+        """Converts a list to a string"""
         length = len(l)
         if length == 0:
             return ""
@@ -119,6 +120,10 @@ class PokemonSkill(MycroftSkill):
         return ", ".join(l[:-1]) + " " + and_str + " " + l[-1]
 
     def _use_english_units(self, message):
+        """
+        :param message: The message object
+        :return: True to use English units, False otherwise
+        """
         # docs on config: https://mycroft.ai/documentation/mycroft-conf/
         if message.data.get("EnglishWeight") or message.data.get("EnglishLength"):
             return True
@@ -429,6 +434,7 @@ class PokemonSkill(MycroftSkill):
             if len(names) > 2:
                 LOG.info("This pokemon has more than two types??? names: " + str(names) + " pokemon: " + pokemon_name)
 
+    # region evolution
     @intent_handler(IntentBuilder("PokemonEvolveFinal").require("Evolve").require("Final"))
     def handle_pokemon_evolve_final(self, message):
         mon = self._extract_pokemon(message)
@@ -549,6 +555,8 @@ class PokemonSkill(MycroftSkill):
         self.speak_dialog("pokemon.evolves.into", {"pokemon": pokemon_name,
                                                    "evolve": display})
 
+    # endregion
+
     @intent_handler(IntentBuilder("PokemonFormIntent").require("Form"))
     def handle_pokemon_form(self, message):
         mon = self._extract_pokemon(message)
@@ -608,6 +616,7 @@ class PokemonSkill(MycroftSkill):
         self.speak_dialog("base.stat.is", {"pokemon": self._pokemon_name(mon),
                                            "stat": stat, "value": value})
 
+    # region simple stats
     @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Speed")
                     .optionally("Pokemon").optionally("Base"))
     def handle_pokemon_base_speed(self, message):
@@ -720,6 +729,8 @@ class PokemonSkill(MycroftSkill):
         display = self._list_to_str(names_list)
         pokemon_name = self._pokemon_name(mon)
         self.speak_dialog("pokemon.egg.groups.are", {"pokemon": pokemon_name, "groups": display})
+
+    # endregion
 
     @intent_handler(IntentBuilder("TypeEffectiveness").require("Effective").optionally("Against").optionally("Move"))
     def handle_type_effectiveness(self, message):
