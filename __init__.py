@@ -66,6 +66,19 @@ def find_final_species_chains(chain):
 
 
 def attr(obj, key):
+    """
+    A simple method to get the attribute of an object or a dictionary. This avoids complex statements like:
+
+    `obj.something.another_thing["something"].another_thing["more"]`
+
+    to just
+
+    `attr(obj, "something.another_thing.something.another_thing.more")`
+
+    :param obj: The object or dictionary to get an attribute from
+    :param key: The attribute key such as "something.something"
+    :return: The attribute
+    """
     if isinstance(key, list):
         split = key
     else:
@@ -84,19 +97,24 @@ def split_word(to_split):
 
 
 # useful docs: https://mycroft-core.readthedocs.io/en/stable/source/mycroft.html#mycroftskill-class
+# Even more useful docs: https://pokeapi.co/docs/v2.html/
 class PokemonSkill(MycroftSkill):
 
     def __init__(self):
-        super(PokemonSkill, self).__init__(name="PokemonSkill")
+        super(PokemonSkill, self).__init__(name="Pokemon")
         self.pokemon_names = None
         """A list of strings representing all pokemon names. These are always in english and are not 
         display-friendly. e.g.: rattata-alola"""
         self.type_names = None
+        """A list of strings representing all type names. These are in englihs and are not display-friendly"""
         self.version_names = None
+        """A list of strings representing all version names. These are in englihs and are not display-friendly"""
         self.ability_names = None
+        """A list of strings representing all ability names. These are in englihs and are not display-friendly"""
         self.last_pokemon = None
+        """The last referenced Pokemon. Should only be used by _check_pokemon"""
         self.last_generation = None
-        """An int representing the last generation"""
+        """An int representing the last generation referenced. Not currently used"""
 
     def initialize(self):
         if not self.pokemon_names:
@@ -117,7 +135,7 @@ class PokemonSkill(MycroftSkill):
             return l[0]
         if not and_str:
             and_str = self.translate("and")
-        return ", ".join(l[:-1]) + " " + and_str + " " + l[-1]
+        return ", ".join(l[:-1]) + ", " + and_str + ". " + l[-1]
 
     def _use_english_units(self, message):
         """
@@ -317,8 +335,6 @@ class PokemonSkill(MycroftSkill):
             if amount > alike:
                 name = name_element
                 alike = amount
-
-        # LOG.info("name: " + name + " alike: " + str(alike))
 
         if not name or alike <= 1.0:
             return None
@@ -732,7 +748,7 @@ class PokemonSkill(MycroftSkill):
 
     # endregion
 
-    @intent_handler(IntentBuilder("TypeEffectiveness").require("Effective").optionally("Against").optionally("Move"))
+    @intent_handler(IntentBuilder("TypeEffectiveness").require("Effective").require("Against").optionally("Move"))
     def handle_type_effectiveness(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
