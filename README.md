@@ -1,5 +1,5 @@
-# <img src='https://newvitruvian.com/images/pokeball-clipart-3.png' card_color='#40DBB0' width='50' style='vertical-align:bottom'/>
-Pokemon Skill Aids you on your journey as a Pokemon Trainer
+# <img src='https://newvitruvian.com/images/pokeball-clipart-3.png' card_color='#40DBB0' width='50' style='vertical-align:bottom'/> Pokemon 
+Aids you on your journey as a Pokemon Trainer
 
 ## About 
 With this skill, you can ask Mycroft many different facts about Pokemon. The things you can ask it range from useful statistics such as when a Pokemon evolves or how effective a move is to a Pokemon's weight.
