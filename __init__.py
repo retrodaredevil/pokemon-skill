@@ -1,6 +1,6 @@
 import re
 from difflib import SequenceMatcher
-from math import floor
+from math import ceil
 
 from adapt.intent import IntentBuilder
 from mycroft.skills.core import MycroftSkill, intent_handler
@@ -106,11 +106,11 @@ class PokemonSkill(MycroftSkill):
         """A list of strings representing all pokemon names. These are always in english and are not 
         display-friendly. e.g.: rattata-alola"""
         self.type_names = None
-        """A list of strings representing all type names. These are in englihs and are not display-friendly"""
+        """A list of strings representing all type names. These are in english and are not display-friendly"""
         self.version_names = None
-        """A list of strings representing all version names. These are in englihs and are not display-friendly"""
+        """A list of strings representing all version names. These are in english and are not display-friendly"""
         self.ability_names = None
-        """A list of strings representing all ability names. These are in englihs and are not display-friendly"""
+        """A list of strings representing all ability names. These are in english and are not display-friendly"""
         self.last_pokemon = None
         """The last referenced Pokemon. Should only be used by _check_pokemon"""
         self.last_generation = None
@@ -384,7 +384,7 @@ class PokemonSkill(MycroftSkill):
         self.last_pokemon = mon
         return mon
 
-    @intent_handler(IntentBuilder("PokemonIDIntent").require("ID"))
+    @intent_handler(IntentBuilder("PokemonIDIntent").require("ID").optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_id(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -393,7 +393,7 @@ class PokemonSkill(MycroftSkill):
 
         self.speak_dialog("pokemon.id.is", {"pokemon": self._pokemon_name(mon), "id": str(mon.species.id)})
 
-    @intent_handler(IntentBuilder("PokemonWeightIntent").require("Weight")
+    @intent_handler(IntentBuilder("PokemonWeightIntent").require("Weight").one_of("Pokemon", "PokemonName")
                     .optionally("EnglishWeight").optionally("MetricWeight"))
     def handle_pokemon_weight(self, message):
         mon = self._extract_pokemon(message)
@@ -409,7 +409,7 @@ class PokemonSkill(MycroftSkill):
 
         self.speak_dialog("pokemon.weighs", {"pokemon": self._pokemon_name(mon), "weight": display})
 
-    @intent_handler(IntentBuilder("PokemonHeightIntent").require("Height")
+    @intent_handler(IntentBuilder("PokemonHeightIntent").require("Height").one_of("Pokemon", "PokemonName")
                     .optionally("EnglishLength").optionally("MetricLength"))
     def handle_pokemon_height(self, message):
         mon = self._extract_pokemon(message)
@@ -420,16 +420,22 @@ class PokemonSkill(MycroftSkill):
         meters = mon.height / 10.0
         if self._use_english_units(message):
             feet = meters * 3.28084
-            whole_feet = floor(feet)
-            inches = (feet - whole_feet) * 12
-            display = str(whole_feet) + " " + self.translate("foot") +\
-                " " + str(int(round(inches))) + " " + self.translate("inches")
+            total_inches = int(round(feet * 12))
+            whole_feet, inches = divmod(total_inches, 12)
+            if whole_feet > 0:
+                if inches > 0:
+                    display = str(whole_feet) + " " + self.translate("foot") +\
+                        " " + str(inches) + " " + self.translate("inches")
+                else:
+                    display = str(whole_feet) + " " + self.translate("foot")
+            else:
+                display = str(inches) + " " + self.translate("inches")
         else:
             display = str(round(meters * 10.0) / 10.0) + " " + self.translate("meters")
 
         self.speak_dialog("pokemon.height", {"pokemon": self._pokemon_name(mon), "height": display})
 
-    @intent_handler(IntentBuilder("PokemonTypeIntent").require("Type"))
+    @intent_handler(IntentBuilder("PokemonTypeIntent").require("Type").optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_type(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -451,7 +457,8 @@ class PokemonSkill(MycroftSkill):
                 LOG.info("This pokemon has more than two types??? names: " + str(names) + " pokemon: " + pokemon_name)
 
     # region evolution
-    @intent_handler(IntentBuilder("PokemonEvolveFinal").require("Evolve").require("Final"))
+    @intent_handler(IntentBuilder("PokemonEvolveFinal").require("Evolve").require("Final")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_evolve_final(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -485,7 +492,8 @@ class PokemonSkill(MycroftSkill):
         self.speak_dialog("pokemon.final.evolution", {"pokemon": pokemon_name,
                                                       "final": display})
 
-    @intent_handler(IntentBuilder("PokemonEvolveFirst").require("Evolve").require("First"))
+    @intent_handler(IntentBuilder("PokemonEvolveFirst").require("Evolve").require("First")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_evolve_first(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -507,7 +515,8 @@ class PokemonSkill(MycroftSkill):
 
         self.speak_dialog("pokemon.first.evolution.is", {"pokemon": pokemon_name, "first": species_name})
 
-    @intent_handler(IntentBuilder("PokemonEvolveFromIntent").require("Evolve").require("From"))
+    @intent_handler(IntentBuilder("PokemonEvolveFromIntent").require("Evolve").require("From")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_evolve_from(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -532,7 +541,8 @@ class PokemonSkill(MycroftSkill):
         species_name = self._species_name(previous_species)
         self.speak_dialog("pokemon.evolves.from", {"pokemon": pokemon_name, "from": species_name, "how": how})
 
-    @intent_handler(IntentBuilder("PokemonEvolveIntoIntent").require("Evolve").require("Into"))
+    @intent_handler(IntentBuilder("PokemonEvolveIntoIntent").require("Evolve").require("Into")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_evolve_into(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -573,7 +583,7 @@ class PokemonSkill(MycroftSkill):
 
     # endregion
 
-    @intent_handler(IntentBuilder("PokemonFormIntent").require("Form"))
+    @intent_handler(IntentBuilder("PokemonFormIntent").require("Form").optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_form(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -609,7 +619,8 @@ class PokemonSkill(MycroftSkill):
         name = self._get_name_from_lang(ability.names)
         self.speak_dialog("ability.generation.introduced", {"ability": name, "generation": generation_id})
 
-    @intent_handler(IntentBuilder("PokemonGenerationIntroduced").optionally("Game").require("Introduced"))
+    @intent_handler(IntentBuilder("PokemonGenerationIntroduced").require("Introduced")
+                    .optionally("Game").optionally("Pokemon").optionally("PokemonName"))
     def handle_generation_introduced(self, message):
         mon = self._extract_pokemon(message)
         if not mon:
@@ -633,37 +644,36 @@ class PokemonSkill(MycroftSkill):
                                            "stat": stat, "value": value})
 
     # region simple stats
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Speed")
-                    .optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Speed").one_of("Base", "Pokemon", "PokemonName"))
     def handle_pokemon_base_speed(self, message):
         self.do_pokemon_base(message, "speed")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpecialDefense").require("Special").require("Defense")
-                    .optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseSpecialDefense").require("Special").require("Defense").optionally("Base")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_base_special_defense(self, message):
         self.do_pokemon_base(message, "special-defense")
 
-    @intent_handler(IntentBuilder("PokemonBaseSpecialAttack").require("Special").require("Attack")
-                    .optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseSpecialAttack").require("Special").require("Attack").optionally("Base")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_base_special_attack(self, message):
         self.do_pokemon_base(message, "special-attack")
 
-    @intent_handler(IntentBuilder("PokemonBaseDefense").require("Defense")
-                    .optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseDefense").require("Defense").optionally("Base")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_base_defense(self, message):
         self.do_pokemon_base(message, "defense")
 
-    @intent_handler(IntentBuilder("PokemonBaseAttack").require("Attack")
-                    .optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseAttack").require("Attack").optionally("Base")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_base_attack(self, message):
         self.do_pokemon_base(message, "attack")
 
-    @intent_handler(IntentBuilder("PokemonBaseHP").require("HP")
-                    .optionally("Pokemon").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseHP").require("HP").optionally("Base")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_base_hp(self, message):
         self.do_pokemon_base(message, "hp")
 
-    @intent_handler(IntentBuilder("PokemonColor").require("Color"))
+    @intent_handler(IntentBuilder("PokemonColor").require("Color").one_of("Pokemon", "PokemonName"))
     def handle_pokemon_color(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -675,7 +685,7 @@ class PokemonSkill(MycroftSkill):
 
         self.speak_dialog("pokemon.color.is", {"pokemon": pokemon_name, "color": color_name})
 
-    @intent_handler(IntentBuilder("PokemonShape").require("Shape"))
+    @intent_handler(IntentBuilder("PokemonShape").require("Shape").optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_shape(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -687,7 +697,7 @@ class PokemonSkill(MycroftSkill):
 
         self.speak_dialog("pokemon.shape.is", {"pokemon": pokemon_name, "shape": shape_name})
 
-    @intent_handler(IntentBuilder("PokemonHabitat").require("Habitat"))
+    @intent_handler(IntentBuilder("PokemonHabitat").require("Habitat").one_of("Pokemon", "PokemonName"))
     def handle_pokemon_habitat(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -699,7 +709,7 @@ class PokemonSkill(MycroftSkill):
 
         self.speak_dialog("pokemon.lives.in", {"pokemon": pokemon_name, "habitat": habitat_name})
 
-    @intent_handler(IntentBuilder("PokemonBaseHappiness").require("Happiness").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseHappiness").require("Happiness").one_of("Base", "Pokemon", "PokemonName"))
     def handle_pokemon_base_happiness(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -709,7 +719,8 @@ class PokemonSkill(MycroftSkill):
         happiness = mon.species.base_happiness
         self.speak_dialog("base.stat.is", {"pokemon": pokemon_name, "stat": "happiness", "value": str(happiness)})
 
-    @intent_handler(IntentBuilder("PokemonBaseExperience").require("Experience").optionally("Base"))
+    @intent_handler(IntentBuilder("PokemonBaseExperience").require("Experience").optionally("Base")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_base_experience(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -719,7 +730,8 @@ class PokemonSkill(MycroftSkill):
         experience = mon.base_experience
         self.speak_dialog("base.stat.is", {"pokemon": pokemon_name, "stat": "experience", "value": str(experience)})
 
-    @intent_handler(IntentBuilder("PokemonCaptureRate").require("CaptureRate"))
+    @intent_handler(IntentBuilder("PokemonCaptureRate").require("CaptureRate").optionally("Base")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_capture_rate(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -729,7 +741,7 @@ class PokemonSkill(MycroftSkill):
         capture_rate = mon.species.capture_rate
         self.speak_dialog("pokemon.capture.rate", {"pokemon": pokemon_name, "rate": capture_rate})
 
-    @intent_handler(IntentBuilder("PokemonEggGroups").require("Egg"))
+    @intent_handler(IntentBuilder("PokemonEggGroups").require("Egg").optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_egg_groups(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -748,7 +760,8 @@ class PokemonSkill(MycroftSkill):
 
     # endregion
 
-    @intent_handler(IntentBuilder("TypeEffectiveness").require("Effective").require("Against").optionally("Move"))
+    @intent_handler(IntentBuilder("TypeEffectiveness").require("Effective").require("Against").optionally("Move")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_type_effectiveness(self, message):
         mon = self._extract_pokemon(message)
         mon = self._check_pokemon(mon)
@@ -807,7 +820,8 @@ class PokemonSkill(MycroftSkill):
 
     @intent_handler(IntentBuilder("PokemonAbility").require("Ability")
                     .optionally("AbilityFlavorText")
-                    .optionally("AbilityEffectEntry").optionally("AbilityEffectEntryShort"))
+                    .optionally("AbilityEffectEntry").optionally("AbilityEffectEntryShort")
+                    .optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_ability(self, message):
         mon = self._extract_pokemon(message)
         is_flavor_text = bool(message.data.get("AbilityFlavorText"))

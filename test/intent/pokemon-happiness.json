@@ -1,0 +1,5 @@
+{
+  "utterance": "What's Pikachu's base happiness",
+  "intent_type": "PokemonBaseHappiness",
+  "expected_responses": "Pikachu's base happiness is 70"
+}

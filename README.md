@@ -7,6 +7,8 @@ With this skill, you can ask Mycroft many different facts about Pokemon. The thi
 
 ## Examples
 * "What type is Pikachu?"
+* "How tall is Pikachu?"
+* "What is Pikachu's base happiness?"
 * "What is Pikachu's first evolution?"
 * "What is Pikachu's final evolution?"
 * "How much does Pikachu weigh in kilograms"
