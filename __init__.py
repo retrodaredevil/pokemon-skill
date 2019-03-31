@@ -4,6 +4,7 @@ from math import ceil
 
 from adapt.intent import IntentBuilder
 from mycroft.skills.core import MycroftSkill, intent_handler
+from mycroft.skills.common_query_skill import CommonQuerySkill, CQSMatchLevel
 from mycroft.util.log import LOG
 from pokebase import pokemon, APIResourceList, pokemon_species, evolution_trigger, item, type_, location, ability, \
     version
@@ -93,12 +94,12 @@ def attr(obj, key):
 
 def split_word(to_split):
     """Simple util method that is used throughout this file to easily split a string if needed."""
-    return re.split("\W+", to_split)
+    return re.split(r"\W+", to_split)
 
 
 # useful docs: https://mycroft-core.readthedocs.io/en/stable/source/mycroft.html#mycroftskill-class
 # Even more useful docs: https://pokeapi.co/docs/v2.html/
-class PokemonSkill(MycroftSkill):
+class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
 
     def __init__(self):
         super(PokemonSkill, self).__init__(name="Pokemon")
@@ -296,7 +297,7 @@ class PokemonSkill(MycroftSkill):
     def _extract_name(message, names):
         """
         Gets the string that appeared most accurately in message.
-        :param message: The message object
+        :param message: The message object or str
         :param names: A list of strings
         :return: One of the elements in names or None.
         """
@@ -322,8 +323,11 @@ class PokemonSkill(MycroftSkill):
                     break  # don't test more words than are in the pokemon's name
             return sum(equalities)
 
-        utterance = message.data["utterance"]
-        split = split_word(utterance)
+        if isinstance(message, str):
+            utt = message
+        else:
+            utt = message.data["utterance"]
+        split = split_word(utt)
 
         name = None
         alike = 0
@@ -383,6 +387,47 @@ class PokemonSkill(MycroftSkill):
                 mon = self.last_pokemon
         self.last_pokemon = mon
         return mon
+
+    def CQS_match_query_phrase(self, phrase):
+        mon = self._extract_pokemon(phrase)
+        if mon:
+            return phrase, CQSMatchLevel.EXACT, ("pokemon", mon)
+        if self.voc_match(phrase, "Pokemon") and self.last_pokemon:
+            return phrase, CQSMatchLevel.EXACT, ("pokemon", None)
+        elif self.voc_match(phrase, "Evolve"):
+            return phrase, CQSMatchLevel.CATEGORY, ("pokemon", None)
+        elif any(self.voc_match(phrase, vocab) for vocab in ["Height", "Weight", "Type", "Form"]):
+            return phrase, CQSMatchLevel.GENERAL, ("pokemon", None)
+
+        abil = self._extract_ability(phrase)
+
+        return None
+
+    def CQS_action(self, phrase, data):
+        data_type = data[0]  # a string
+        obj = data[1]  # The resource or None
+
+        if data_type == "pokemon":
+            mon = self._check_pokemon(obj)
+            if not mon:
+                return
+
+            if self.voc_match(phrase, "Evolve"):
+                pass
+            elif self.voc_match(phrase, "Introduced"):
+                self.do_pokemon_version_introduced(mon)
+            elif self.voc_match(phrase, "Effective") and self.voc_match(phrase, "Against"):
+                pass
+            elif self.voc_match(phrase, "Weight"):
+                pass
+            elif self.voc_match(phrase, "Height"):
+                pass
+            elif self.voc_match(phrase, "Type"):
+                pass
+            elif self.voc_match(phrase, "Form"):
+                pass
+        elif data_type == "ability":
+            abil = obj
 
     @intent_handler(IntentBuilder("PokemonIDIntent").require("ID").optionally("Pokemon").optionally("PokemonName"))
     def handle_pokemon_id(self, message):
@@ -613,10 +658,10 @@ class PokemonSkill(MycroftSkill):
             "generation": generation_id
         })
 
-    def do_ability_generation_introduced(self, ability):
-        generation_id = ability.generation.id
+    def do_ability_generation_introduced(self, a):
+        generation_id = a.generation.id
         self.last_generation = generation_id
-        name = self._get_name_from_lang(ability.names)
+        name = self._get_name_from_lang(a.names)
         self.speak_dialog("ability.generation.introduced", {"ability": name, "generation": generation_id})
 
     @intent_handler(IntentBuilder("PokemonGenerationIntroduced").require("Introduced")
@@ -624,9 +669,9 @@ class PokemonSkill(MycroftSkill):
     def handle_generation_introduced(self, message):
         mon = self._extract_pokemon(message)
         if not mon:
-            ability = self._extract_ability(message)
-            if ability:
-                self.do_ability_generation_introduced(ability)
+            abil = self._extract_ability(message)
+            if abil:
+                self.do_ability_generation_introduced(abil)
                 return
             mon = self._check_pokemon(mon)
             if not mon:
@@ -799,10 +844,10 @@ class PokemonSkill(MycroftSkill):
         else:
             self.speak_dialog("type.is.super", speak_dict)
 
-    def do_flavor_text(self, ability, version_name=None):
+    def do_flavor_text(self, abil, version_name=None):
         lang_name = self._get_lang()[0]
         text = None
-        for flavor_text in ability.flavor_text_entries:
+        for flavor_text in abil.flavor_text_entries:
             is_lang_correct = flavor_text.language.name == lang_name
             if is_lang_correct or not text:
                 if not version_name or any(v.name == version_name for v in flavor_text.version_group.versions):
@@ -810,12 +855,12 @@ class PokemonSkill(MycroftSkill):
                     if is_lang_correct:
                         break
         if text:
-            self.speak_dialog("ability.flavor.text", {"ability": self._get_name_from_lang(ability.names),
+            self.speak_dialog("ability.flavor.text", {"ability": self._get_name_from_lang(abil.names),
                                                       "info": text})
         else:
             ability_version = version(version_name)
             self.speak_dialog("ability.not.in.version",
-                              {"ability": self._get_name_from_lang(ability.names),
+                              {"ability": self._get_name_from_lang(abil.names),
                                "version": self._get_name_from_lang(ability_version.names)})
 
     @intent_handler(IntentBuilder("PokemonAbility").require("Ability")
@@ -828,16 +873,16 @@ class PokemonSkill(MycroftSkill):
         is_effect_entry = bool(message.data.get("AbilityEffectEntry"))
         is_effect_entry_short = bool(message.data.get("AbilityEffectEntryShort"))
         if not mon or is_flavor_text or is_effect_entry or is_effect_entry_short:
-            ability = self._extract_ability(message)
-            if ability:  # if the user said something with a known ability in it, they may want to know more about it
+            abil = self._extract_ability(message)
+            if abil:  # if the user said something with a known ability in it, they may want to know more about it
                 version_name = self.__class__._extract_name(message, self.version_names)
                 if is_flavor_text or (not is_effect_entry and not is_effect_entry_short):
-                    self.do_flavor_text(ability, version_name)
+                    self.do_flavor_text(abil, version_name)
                 else:
                     key = "short_effect" if (is_effect_entry_short or not is_effect_entry) else "effect"
                     text = None
                     lang_name = self._get_lang()[0]
-                    for effect_entry in ability.effect_entries:
+                    for effect_entry in abil.effect_entries:
                         is_correct_lang = effect_entry.language.name == lang_name
                         if is_correct_lang or not text:
                             text = attr(effect_entry, key)
@@ -845,8 +890,8 @@ class PokemonSkill(MycroftSkill):
                                 break
                     if not text:
                         raise Exception("The ability didn't have effect_entries? ability.effect_entries: "
-                                        + str(ability.effect_entries))
-                    self.speak_dialog("ability.effect.entry", {"ability": self._get_name_from_lang(ability.names),
+                                        + str(abil.effect_entries))
+                    self.speak_dialog("ability.effect.entry", {"ability": self._get_name_from_lang(abil.names),
                                                                "info": text})
                 return
             mon = self._check_pokemon(mon)
@@ -855,9 +900,9 @@ class PokemonSkill(MycroftSkill):
 
         normal_abilities = []
         hidden_abilities = []
-        for ability in sorted(mon.abilities, key=lambda x: x.slot):
-            name = self._get_name_from_lang(ability.ability.names)
-            if ability.is_hidden:
+        for abil in sorted(mon.abilities, key=lambda x: x.slot):
+            name = self._get_name_from_lang(abil.ability.names)
+            if abil.is_hidden:
                 hidden_abilities.append(name)
             else:
                 normal_abilities.append(name)
