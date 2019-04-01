@@ -114,6 +114,8 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
         """A list of strings representing all ability names. These are in english and are not display-friendly"""
         self.last_pokemon = None
         """The last referenced Pokemon. Should only be used by _check_pokemon"""
+        self.last_ability = None
+        """The last referenced Ability. Should only be used by _check_ability"""
         self.last_generation = None
         """An int representing the last generation referenced. Not currently used"""
 
@@ -138,15 +140,15 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
             and_str = self.translate("and")
         return ", ".join(l[:-1]) + ", " + and_str + ". " + l[-1]
 
-    def _use_english_units(self, message):
+    def _use_english_units(self, phrase):
         """
         :param message: The message object
         :return: True to use English units, False otherwise
         """
         # docs on config: https://mycroft.ai/documentation/mycroft-conf/
-        if message.data.get("EnglishWeight") or message.data.get("EnglishLength"):
+        if self.voc_match(phrase, "EnglishWeight") or self.voc_match(phrase, "EnglishLength"):
             return True
-        if message.data.get("MetricWeight") or message.data.get("MetricLength"):
+        if self.voc_match(phrase, "MetricWeight") or self.voc_match(phrase, "MetricLength"):
             return False
 
         unit = self.config_core.get("system_unit")
@@ -388,82 +390,131 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
         self.last_pokemon = mon
         return mon
 
+    def _check_ability(self, abil):
+        if not abil:
+            if not self.last_ability:
+                self.speak_dialog("unable.to.find.ability")
+                return None
+            else:
+                abil = self.last_ability
+        self.last_ability = abil
+        return abil
+
     def CQS_match_query_phrase(self, phrase):
+        LOG.info("querying in Pokemon!!!")
         mon = self._extract_pokemon(phrase)
+        LOG.info("Should be returning!!!")
         if mon:
-            return phrase, CQSMatchLevel.EXACT, ("pokemon", mon)
+            return phrase, CQSMatchLevel.EXACT, True, ("pokemon", mon.name)
         if self.voc_match(phrase, "Pokemon") and self.last_pokemon:
             return phrase, CQSMatchLevel.EXACT, ("pokemon", None)
         elif self.voc_match(phrase, "Evolve"):
-            return phrase, CQSMatchLevel.CATEGORY, ("pokemon", None)
+            return phrase, CQSMatchLevel.CATEGORY, True, ("pokemon", None)
         elif any(self.voc_match(phrase, vocab) for vocab in ["Height", "Weight", "Type", "Form"]):
-            return phrase, CQSMatchLevel.GENERAL, ("pokemon", None)
+            return phrase, CQSMatchLevel.GENERAL, True, ("pokemon", None)
 
         abil = self._extract_ability(phrase)
+        if abil:
+            return phrase, CQSMatchLevel.CATEGORY, True, ("ability", abil.name)
 
         return None
 
     def CQS_action(self, phrase, data):
         data_type = data[0]  # a string
-        obj = data[1]  # The resource or None
+        data_name = data[1]  # The resource or None
 
         if data_type == "pokemon":
-            mon = self._check_pokemon(obj)
+            mon = self._check_pokemon(pokemon(data_name) if data_name else None)
             if not mon:
                 return
 
             if self.voc_match(phrase, "Evolve"):
-                pass
+                if self.voc_match(phrase, "Final"):
+                    self.do_pokemon_evolve_final(mon)
+                elif self.voc_match(phrase, "First"):
+                    self.do_pokemon_evolve_first(mon)
+                elif self.voc_match(phrase, "From"):
+                    self.do_pokemon_evolve_previous(mon)
+                else:
+                    self.do_pokemon_evolve_into(mon)
+            elif self.voc_match(phrase, "Ability"):
+                self.do_pokemon_abilities(mon)
             elif self.voc_match(phrase, "Introduced"):
                 self.do_pokemon_version_introduced(mon)
             elif self.voc_match(phrase, "Effective") and self.voc_match(phrase, "Against"):
-                pass
+                self.do_type_effectiveness(mon, phrase)
             elif self.voc_match(phrase, "Weight"):
-                pass
+                self.do_pokemon_weight(mon, phrase)
             elif self.voc_match(phrase, "Height"):
-                pass
+                self.do_pokemon_height(mon, phrase)
             elif self.voc_match(phrase, "Type"):
-                pass
+                self.do_pokemon_type(mon)
             elif self.voc_match(phrase, "Form"):
-                pass
+                self.do_pokemon_form(mon)
+            elif self.voc_match(phrase, "ID"):
+                self.speak_dialog("pokemon.id.is", {"pokemon": self._pokemon_name(mon), "id": str(mon.species.id)})
+            elif self.voc_match(phrase, "Speed"):
+                self.do_pokemon_base(mon, "speed")
+            elif self.voc_match(phrase, "HP"):
+                self.do_pokemon_base(mon, "hp")
+            elif self.voc_match(phrase, "Color"):
+                self.do_pokemon_color(mon)
+            elif self.voc_match(phrase, "Shape"):
+                self.do_pokemon_shape(mon)
+            elif self.voc_match(phrase, "Habitat"):
+                self.do_pokemon_habitat(mon)
+            elif self.voc_match(phrase, "Happiness"):
+                self.do_pokemon_base_happiness(mon)
+            elif self.voc_match(phrase, "Experience"):
+                self.do_pokemon_base_experience(mon)
+            elif self.voc_match(phrase, "Egg"):
+                self.do_pokemon_egg_groups(mon)
+            elif self.voc_match(phrase, "CaptureRate"):
+                self.do_pokemon_capture_rate(mon)
+            else:
+                attack = self.voc_match(phrase, "Attack")
+                defense = self.voc_match(phrase, "Defense")
+                special = self.voc_match(phrase, "Special")
+                if attack or defense or special:
+                    if special:
+                        if defense:
+                            self.do_pokemon_base(mon, "special-defense")
+                        else:
+                            self.do_pokemon_base(mon, "special-attack")
+                    else:
+                        if attack:
+                            self.do_pokemon_base(mon, "attack")
+                        else:
+                            assert defense
+                            self.do_pokemon_base(mon, "defense")
+                else:
+                    self.speak_dialog("cannot.answer.about.pokemon")
         elif data_type == "ability":
-            abil = obj
+            if data_name:
+                abil = ability(data_name)
+                if self.voc_match(phrase, "AbilityFlavorText"):
+                    self.do_ability_flavor_text(abil, phrase)
+                elif self.voc_match(phrase, "Introduced"):
+                    self.do_ability_generation_introduced(abil)
+                elif self.voc_match(phrase, "AbilityEffectEntry"):
+                    self.do_ability_effect_entry(abil, short=False)
+                else:
+                    self.do_ability_effect_entry(abil, short=True)
+            else:
+                self.speak_dialog("cannot.answer.about.ability")
 
-    @intent_handler(IntentBuilder("PokemonIDIntent").require("ID").optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_id(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
-        self.speak_dialog("pokemon.id.is", {"pokemon": self._pokemon_name(mon), "id": str(mon.species.id)})
-
-    @intent_handler(IntentBuilder("PokemonWeightIntent").require("Weight").one_of("Pokemon", "PokemonName")
-                    .optionally("EnglishWeight").optionally("MetricWeight"))
-    def handle_pokemon_weight(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_weight(self, mon, phrase):
         kg = mon.weight / 10.0
-        if self._use_english_units(message):
+        if self._use_english_units(phrase):
             display = str(int(round(kg * 2.20462))) + " " + self.translate("pounds")
         else:
             display = str(kg) + " " + self.translate("kilograms")
 
         self.speak_dialog("pokemon.weighs", {"pokemon": self._pokemon_name(mon), "weight": display})
 
-    @intent_handler(IntentBuilder("PokemonHeightIntent").require("Height").one_of("Pokemon", "PokemonName")
-                    .optionally("EnglishLength").optionally("MetricLength"))
-    def handle_pokemon_height(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_height(self, mon, phrase):
         meters = mon.height / 10.0
-        if self._use_english_units(message):
+        if self._use_english_units(phrase):
             feet = meters * 3.28084
             total_inches = int(round(feet * 12))
             whole_feet, inches = divmod(total_inches, 12)
@@ -480,13 +531,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
 
         self.speak_dialog("pokemon.height", {"pokemon": self._pokemon_name(mon), "height": display})
 
-    @intent_handler(IntentBuilder("PokemonTypeIntent").require("Type").optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_type(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_type(self, mon):
         names = []
         for type_slot in sorted(mon.types, key=lambda x: x.slot):
             pokemon_type = type_slot.type
@@ -502,14 +547,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
                 LOG.info("This pokemon has more than two types??? names: " + str(names) + " pokemon: " + pokemon_name)
 
     # region evolution
-    @intent_handler(IntentBuilder("PokemonEvolveFinal").require("Evolve").require("Final")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_evolve_final(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_evolve_final(self, mon):
         pokemon_name = self._pokemon_name(mon)
 
         species_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1]
@@ -537,14 +575,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
         self.speak_dialog("pokemon.final.evolution", {"pokemon": pokemon_name,
                                                       "final": display})
 
-    @intent_handler(IntentBuilder("PokemonEvolveFirst").require("Evolve").require("First")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_evolve_first(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_evolve_first(self, mon):
         pokemon_name = self._pokemon_name(mon)
 
         evolution_chain = mon.species.evolution_chain.chain
@@ -560,14 +591,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
 
         self.speak_dialog("pokemon.first.evolution.is", {"pokemon": pokemon_name, "first": species_name})
 
-    @intent_handler(IntentBuilder("PokemonEvolveFromIntent").require("Evolve").require("From")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_evolve_from(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_evolve_previous(self, mon):
         previous_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[0]
         how = ""
         for evolution in attr(previous_chain, "evolves_to"):
@@ -586,14 +610,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
         species_name = self._species_name(previous_species)
         self.speak_dialog("pokemon.evolves.from", {"pokemon": pokemon_name, "from": species_name, "how": how})
 
-    @intent_handler(IntentBuilder("PokemonEvolveIntoIntent").require("Evolve").require("Into")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_evolve_into(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_evolve_into(self, mon):
         pokemon_name = self._pokemon_name(mon)
 
         species_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[1]
@@ -628,13 +645,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
 
     # endregion
 
-    @intent_handler(IntentBuilder("PokemonFormIntent").require("Form").optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_form(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_form(self, mon):
         pokemon_name = self._pokemon_name(mon)
         form_name = self._form_name(mon)
         if not form_name:
@@ -649,7 +660,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
             raise Exception("mon.forms is None or empty! forms: " + str(forms))
         version_group = forms[0].version_group
         versions = version_group.versions
-        version_names = [self._get_name_from_lang(version.names) for version in versions]
+        version_names = [self._get_name_from_lang(v.names) for v in versions]
         generation_id = version_group.generation.id
         self.last_generation = generation_id
         self.speak_dialog("pokemon.version.introduced", {
@@ -658,141 +669,53 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
             "generation": generation_id
         })
 
-    def do_ability_generation_introduced(self, a):
-        generation_id = a.generation.id
+    def do_ability_generation_introduced(self, abil):
+        generation_id = abil.generation.id
         self.last_generation = generation_id
-        name = self._get_name_from_lang(a.names)
+        name = self._get_name_from_lang(abil.names)
         self.speak_dialog("ability.generation.introduced", {"ability": name, "generation": generation_id})
 
-    @intent_handler(IntentBuilder("PokemonGenerationIntroduced").require("Introduced")
-                    .optionally("Game").optionally("Pokemon").optionally("PokemonName"))
-    def handle_generation_introduced(self, message):
-        mon = self._extract_pokemon(message)
-        if not mon:
-            abil = self._extract_ability(message)
-            if abil:
-                self.do_ability_generation_introduced(abil)
-                return
-            mon = self._check_pokemon(mon)
-            if not mon:
-                return
-        self.do_pokemon_version_introduced(mon)
 
-    def do_pokemon_base(self, message, stat):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    # region simple stats
+    def do_pokemon_base(self, mon, stat):
         value = base_stat(mon, stat)
         self.speak_dialog("base.stat.is", {"pokemon": self._pokemon_name(mon),
                                            "stat": stat, "value": value})
 
-    # region simple stats
-    @intent_handler(IntentBuilder("PokemonBaseSpeed").require("Speed").one_of("Base", "Pokemon", "PokemonName"))
-    def handle_pokemon_base_speed(self, message):
-        self.do_pokemon_base(message, "speed")
-
-    @intent_handler(IntentBuilder("PokemonBaseSpecialDefense").require("Special").require("Defense").optionally("Base")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_base_special_defense(self, message):
-        self.do_pokemon_base(message, "special-defense")
-
-    @intent_handler(IntentBuilder("PokemonBaseSpecialAttack").require("Special").require("Attack").optionally("Base")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_base_special_attack(self, message):
-        self.do_pokemon_base(message, "special-attack")
-
-    @intent_handler(IntentBuilder("PokemonBaseDefense").require("Defense").optionally("Base")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_base_defense(self, message):
-        self.do_pokemon_base(message, "defense")
-
-    @intent_handler(IntentBuilder("PokemonBaseAttack").require("Attack").optionally("Base")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_base_attack(self, message):
-        self.do_pokemon_base(message, "attack")
-
-    @intent_handler(IntentBuilder("PokemonBaseHP").require("HP").optionally("Base")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_base_hp(self, message):
-        self.do_pokemon_base(message, "hp")
-
-    @intent_handler(IntentBuilder("PokemonColor").require("Color").one_of("Pokemon", "PokemonName"))
-    def handle_pokemon_color(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_color(self, mon):
         color_name = self._get_name_from_lang(mon.species.color.names)
         pokemon_name = self._pokemon_name(mon)
 
         self.speak_dialog("pokemon.color.is", {"pokemon": pokemon_name, "color": color_name})
 
-    @intent_handler(IntentBuilder("PokemonShape").require("Shape").optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_shape(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_shape(self, mon):
         shape_name = self._get_name_from_lang(mon.species.shape.names)
         pokemon_name = self._pokemon_name(mon)
 
         self.speak_dialog("pokemon.shape.is", {"pokemon": pokemon_name, "shape": shape_name})
 
-    @intent_handler(IntentBuilder("PokemonHabitat").require("Habitat").one_of("Pokemon", "PokemonName"))
-    def handle_pokemon_habitat(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_habitat(self, mon):
         habitat_name = self._get_name_from_lang(mon.species.habitat.names)
         pokemon_name = self._pokemon_name(mon)
 
         self.speak_dialog("pokemon.lives.in", {"pokemon": pokemon_name, "habitat": habitat_name})
 
-    @intent_handler(IntentBuilder("PokemonBaseHappiness").require("Happiness").one_of("Base", "Pokemon", "PokemonName"))
-    def handle_pokemon_base_happiness(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
+    def do_pokemon_base_happiness(self, mon):
         pokemon_name = self._pokemon_name(mon)
         happiness = mon.species.base_happiness
         self.speak_dialog("base.stat.is", {"pokemon": pokemon_name, "stat": "happiness", "value": str(happiness)})
 
-    @intent_handler(IntentBuilder("PokemonBaseExperience").require("Experience").optionally("Base")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_base_experience(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
+    def do_pokemon_base_experience(self, mon):
         pokemon_name = self._pokemon_name(mon)
         experience = mon.base_experience
         self.speak_dialog("base.stat.is", {"pokemon": pokemon_name, "stat": "experience", "value": str(experience)})
 
-    @intent_handler(IntentBuilder("PokemonCaptureRate").require("CaptureRate").optionally("Base")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_capture_rate(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
+    def do_pokemon_capture_rate(self, mon):
         pokemon_name = self._pokemon_name(mon)
         capture_rate = mon.species.capture_rate
         self.speak_dialog("pokemon.capture.rate", {"pokemon": pokemon_name, "rate": capture_rate})
 
-    @intent_handler(IntentBuilder("PokemonEggGroups").require("Egg").optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_egg_groups(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
-
+    def do_pokemon_egg_groups(self, mon):
         groups = mon.species.egg_groups
         names_list = []
         for group in groups:
@@ -805,15 +728,9 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
 
     # endregion
 
-    @intent_handler(IntentBuilder("TypeEffectiveness").require("Effective").require("Against").optionally("Move")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_type_effectiveness(self, message):
-        mon = self._extract_pokemon(message)
-        mon = self._check_pokemon(mon)
-        if not mon:
-            return
+    def do_type_effectiveness(self, mon, phrase):
 
-        desired_type = self._extract_type(message)
+        desired_type = self._extract_type(phrase)
         if not desired_type:
             self.speak_dialog("no.type.specified")
             return
@@ -844,60 +761,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
         else:
             self.speak_dialog("type.is.super", speak_dict)
 
-    def do_flavor_text(self, abil, version_name=None):
-        lang_name = self._get_lang()[0]
-        text = None
-        for flavor_text in abil.flavor_text_entries:
-            is_lang_correct = flavor_text.language.name == lang_name
-            if is_lang_correct or not text:
-                if not version_name or any(v.name == version_name for v in flavor_text.version_group.versions):
-                    text = flavor_text.flavor_text
-                    if is_lang_correct:
-                        break
-        if text:
-            self.speak_dialog("ability.flavor.text", {"ability": self._get_name_from_lang(abil.names),
-                                                      "info": text})
-        else:
-            ability_version = version(version_name)
-            self.speak_dialog("ability.not.in.version",
-                              {"ability": self._get_name_from_lang(abil.names),
-                               "version": self._get_name_from_lang(ability_version.names)})
-
-    @intent_handler(IntentBuilder("PokemonAbility").require("Ability")
-                    .optionally("AbilityFlavorText")
-                    .optionally("AbilityEffectEntry").optionally("AbilityEffectEntryShort")
-                    .optionally("Pokemon").optionally("PokemonName"))
-    def handle_pokemon_ability(self, message):
-        mon = self._extract_pokemon(message)
-        is_flavor_text = bool(message.data.get("AbilityFlavorText"))
-        is_effect_entry = bool(message.data.get("AbilityEffectEntry"))
-        is_effect_entry_short = bool(message.data.get("AbilityEffectEntryShort"))
-        if not mon or is_flavor_text or is_effect_entry or is_effect_entry_short:
-            abil = self._extract_ability(message)
-            if abil:  # if the user said something with a known ability in it, they may want to know more about it
-                version_name = self.__class__._extract_name(message, self.version_names)
-                if is_flavor_text or (not is_effect_entry and not is_effect_entry_short):
-                    self.do_flavor_text(abil, version_name)
-                else:
-                    key = "short_effect" if (is_effect_entry_short or not is_effect_entry) else "effect"
-                    text = None
-                    lang_name = self._get_lang()[0]
-                    for effect_entry in abil.effect_entries:
-                        is_correct_lang = effect_entry.language.name == lang_name
-                        if is_correct_lang or not text:
-                            text = attr(effect_entry, key)
-                            if is_correct_lang:
-                                break
-                    if not text:
-                        raise Exception("The ability didn't have effect_entries? ability.effect_entries: "
-                                        + str(abil.effect_entries))
-                    self.speak_dialog("ability.effect.entry", {"ability": self._get_name_from_lang(abil.names),
-                                                               "info": text})
-                return
-            mon = self._check_pokemon(mon)
-            if not mon:
-                return
-
+    def do_pokemon_abilities(self, mon):
         normal_abilities = []
         hidden_abilities = []
         for abil in sorted(mon.abilities, key=lambda x: x.slot):
@@ -924,15 +788,41 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
                 "hidden_abilities": self._list_to_str(hidden_abilities)
             })
 
+    def do_ability_flavor_text(self, abil, phrase):
+        version_name = self.__class__._extract_name(phrase, self.version_names)
+        lang_name = self._get_lang()[0]
+        text = None
+        for flavor_text in abil.flavor_text_entries:
+            is_lang_correct = flavor_text.language.name == lang_name
+            if is_lang_correct or not text:
+                if not version_name or any(v.name == version_name for v in flavor_text.version_group.versions):
+                    text = flavor_text.flavor_text
+                    if is_lang_correct:
+                        break
+        if text:
+            self.speak_dialog("ability.flavor.text", {"ability": self._get_name_from_lang(abil.names),
+                                                      "info": text})
+        else:
+            ability_version = version(version_name)
+            self.speak_dialog("ability.not.in.version",
+                              {"ability": self._get_name_from_lang(abil.names),
+                               "version": self._get_name_from_lang(ability_version.names)})
 
-    # The "stop" method defines what Mycroft does when told to stop during
-    # the skill's execution. In this case, since the skill's functionality
-    # is extremely simple, there is no need to override it.  If you DO
-    # need to implement stop, you should return True to indicate you handled
-    # it.
-    #
-    # def stop(self):
-    #    return False
+    def do_ability_effect_entry(self, abil, short=True):
+        key = "short_effect" if short else "effect"
+        text = None
+        lang_name = self._get_lang()[0]
+        for effect_entry in abil.effect_entries:
+            is_correct_lang = effect_entry.language.name == lang_name
+            if is_correct_lang or not text:
+                text = attr(effect_entry, key)
+                if is_correct_lang:
+                    break
+        if not text:
+            raise Exception("The ability didn't have effect_entries? ability.effect_entries: "
+                            + str(abil.effect_entries))
+        self.speak_dialog("ability.effect.entry", {"ability": self._get_name_from_lang(abil.names),
+                                                   "info": text})
 
 
 def create_skill():
