@@ -1,4 +1,5 @@
 import re
+import time
 from difflib import SequenceMatcher
 from math import ceil
 
@@ -11,6 +12,60 @@ from pokebase import pokemon, APIResourceList, pokemon_species, evolution_trigge
 
 
 __author__ = "retrodaredevil"
+
+
+def _extract_name(message, names):
+    """
+    Gets the string that appeared most accurately in message.
+    :param message: The message object or str
+    :param names: A list of strings
+    :return: One of the elements in names or None.
+    """
+    def alike_amount(pokemon_name):
+        """
+        :param pokemon_name: Name of the pokemon as a string
+        :return: A number from 0 to 1 representing how alike pokemon_name is to utterance where 1 is most alike
+        """
+        split_name = split_word(pokemon_name)
+
+        name_index = 0
+        equalities = []
+        for s in split:
+            name_compare_word = split_name[name_index]
+            equality = SequenceMatcher(None, name_compare_word, s).ratio()
+            if equality > .9:
+                equalities.append(equality)
+                name_index += 1
+            elif name_index > 0:  # if this has already been appended to, break
+                break
+
+            if name_index >= len(split_name):
+                break  # don't test more words than are in the pokemon's name
+        return sum(equalities)
+
+    if isinstance(message, str):
+        utt = message
+    else:
+        utt = message.data["utterance"]
+    split = split_word(utt)
+
+    name = None
+    alike = 0
+
+    for name_element in names:
+        name_split = name_element.split("-")
+        split_alike = sum(alike_amount(name) for name in name_split)
+        if split_alike / len(name_split) <= .5:
+            split_alike = 0
+        amount = .25 * split_alike + alike_amount(name_element)
+        # amount = alike_amount(name_element)
+        if amount > alike:
+            name = name_element
+            alike = amount
+
+    if not name or alike <= 1.125:
+        return None
+    return name
 
 
 def base_stat(mon, stat_name):
@@ -99,7 +154,7 @@ def split_word(to_split):
 
 # useful docs: https://mycroft-core.readthedocs.io/en/stable/source/mycroft.html#mycroftskill-class
 # Even more useful docs: https://pokeapi.co/docs/v2.html/
-class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
+class PokemonSkill(CommonQuerySkill):
 
     def __init__(self):
         super(PokemonSkill, self).__init__(name="Pokemon")
@@ -118,6 +173,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
         """The last referenced Ability. Should only be used by _check_ability"""
         self.last_generation = None
         """An int representing the last generation referenced. Not currently used"""
+        self.last_context_time = None
 
     def initialize(self):
         if not self.pokemon_names:
@@ -142,7 +198,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
 
     def _use_english_units(self, phrase):
         """
-        :param message: The message object
+        :param phrase: The phrase string
         :return: True to use English units, False otherwise
         """
         # docs on config: https://mycroft.ai/documentation/mycroft-conf/
@@ -181,10 +237,36 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
                     return best_name
 
         if not best_name:
-            LOG.info("Couldn't find a name for lang: " + str(lang) + ", lang_name: " + lang_name +
+            LOG.info("Couldn't find a name for lang_name: " + lang_name +
                      ", country: " + country + " | using name: " + names[-1].name)
 
         return best_name or names[-1].name
+
+    def _get_flavor_text(self, flavor_text_entries, version_name):
+        lang_name = self._get_lang()[0]
+        text = None
+        for flavor_text in flavor_text_entries:
+            is_lang_correct = flavor_text.language.name == lang_name
+            if is_lang_correct or not text:
+                if not version_name or any(v.name == version_name for v in flavor_text.version_group.versions):
+                    text = flavor_text.flavor_text
+                    if is_lang_correct:
+                        break
+
+        return text
+
+    def _get_effect_entry(self, effect_entries, short=True):
+        key = "short_effect" if short else "effect"
+        text = None
+        lang_name = self._get_lang()[0]
+        for effect_entry in effect_entries:
+            is_correct_lang = effect_entry.language.name == lang_name
+            if is_correct_lang or not text:
+                text = attr(effect_entry, key)
+                if is_correct_lang:
+                    break
+
+        return text
 
     def _pokemon_name(self, mon):
         """
@@ -295,59 +377,8 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
             + min_affection_display + time_display + location_display + needs_rain_display + gender_display \
             + party_type_display
 
-    @staticmethod
-    def _extract_name(message, names):
-        """
-        Gets the string that appeared most accurately in message.
-        :param message: The message object or str
-        :param names: A list of strings
-        :return: One of the elements in names or None.
-        """
-        def alike_amount(pokemon_name):
-            """
-            :param pokemon_name: Name of the pokemon as a string
-            :return: A number from 0 to 1 representing how alike pokemon_name is to utterance where 1 is most alike
-            """
-            split_name = split_word(pokemon_name)
-
-            name_index = 0
-            equalities = []
-            for s in split:
-                name_compare_word = split_name[name_index]
-                equality = SequenceMatcher(None, name_compare_word, s).ratio()
-                if equality > .7:
-                    equalities.append(equality)
-                    name_index += 1
-                elif name_index > 0:  # if this has already been appended to, break
-                    break
-
-                if name_index >= len(split_name):
-                    break  # don't test more words than are in the pokemon's name
-            return sum(equalities)
-
-        if isinstance(message, str):
-            utt = message
-        else:
-            utt = message.data["utterance"]
-        split = split_word(utt)
-
-        name = None
-        alike = 0
-
-        for name_element in names:
-            name_split = name_element.split("-")
-            amount = .25 * sum(alike_amount(name) for name in name_split) + alike_amount(name_element)
-            # amount = alike_amount(name_element)
-            if amount > alike:
-                name = name_element
-                alike = amount
-
-        if not name or alike <= 1.0:
-            return None
-        return name
-
     def _extract_pokemon(self, message):
-        name = self.__class__._extract_name(message, self.pokemon_names)
+        name = _extract_name(message, self.pokemon_names)
         if not name:
             return None
         try:
@@ -357,7 +388,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
             raise
 
     def _extract_type(self, message):
-        name = self.__class__._extract_name(message, self.type_names)
+        name = _extract_name(message, self.type_names)
         if not name:
             return None
         try:
@@ -367,7 +398,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
             raise
 
     def _extract_ability(self, message):
-        name = self.__class__._extract_name(message, self.ability_names)
+        name = _extract_name(message, self.ability_names)
         if not name:
             return None
         try:
@@ -388,6 +419,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
             else:
                 mon = self.last_pokemon
         self.last_pokemon = mon
+        self.last_context_time = time.time()
         return mon
 
     def _check_ability(self, abil):
@@ -400,23 +432,42 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
         self.last_ability = abil
         return abil
 
+    @property
+    def has_pokemon_context(self):
+        if not self.last_context_time or self.last_context_time + 45 < time.time():
+            return False
+        return bool(self.last_pokemon)
+
+    def reset_all_context(self):
+        self.last_pokemon = None
+        self.last_ability = None
+        self.last_generation = None
+
     def CQS_match_query_phrase(self, phrase):
-        LOG.info("querying in Pokemon!!!")
         mon = self._extract_pokemon(phrase)
-        LOG.info("Should be returning!!!")
         if mon:
             return phrase, CQSMatchLevel.EXACT, True, ("pokemon", mon.name)
         if self.voc_match(phrase, "Pokemon") and self.last_pokemon:
             return phrase, CQSMatchLevel.EXACT, ("pokemon", None)
-        elif self.voc_match(phrase, "Evolve"):
-            return phrase, CQSMatchLevel.CATEGORY, True, ("pokemon", None)
-        elif any(self.voc_match(phrase, vocab) for vocab in ["Height", "Weight", "Type", "Form"]):
-            return phrase, CQSMatchLevel.GENERAL, True, ("pokemon", None)
+        elif any(self.voc_match(phrase, vocab) for vocab in ["Evolve", "CaptureRate"]):
+            return phrase, CQSMatchLevel.CATEGORY if self.has_pokemon_context else CQSMatchLevel.GENERAL, \
+                   True, ("pokemon", None)
+        else:
+            if self.has_pokemon_context:
+                if any(self.voc_match(phrase, vocab) for vocab in ["Height", "Weight", "Type", "Form", "Attack",
+                                                                   "Defense", "Special", "Color", "Egg", "Happiness"]):
+                    return phrase, CQSMatchLevel.GENERAL, True, ("pokemon", None)
 
         abil = self._extract_ability(phrase)
-        if abil:
-            return phrase, CQSMatchLevel.CATEGORY, True, ("ability", abil.name)
+        ability_said = bool(abil) or self.voc_match(phrase, "Ability")
+        additional_ability = any(self.voc_match(phrase, vocab) for vocab in ["AbilityEffectEntry",
+                                                                             "AbilityEffectEntryShort",
+                                                                             "AbilityFlavorText"])
+        if ability_said or additional_ability:
+            return phrase, CQSMatchLevel.EXACT if (ability_said and additional_ability) else CQSMatchLevel.CATEGORY, \
+                   True, ("ability", abil.name if abil else None)
 
+        self.reset_all_context()
         return None
 
     def CQS_action(self, phrase, data):
@@ -675,7 +726,6 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
         name = self._get_name_from_lang(abil.names)
         self.speak_dialog("ability.generation.introduced", {"ability": name, "generation": generation_id})
 
-
     # region simple stats
     def do_pokemon_base(self, mon, stat):
         value = base_stat(mon, stat)
@@ -789,16 +839,8 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
             })
 
     def do_ability_flavor_text(self, abil, phrase):
-        version_name = self.__class__._extract_name(phrase, self.version_names)
-        lang_name = self._get_lang()[0]
-        text = None
-        for flavor_text in abil.flavor_text_entries:
-            is_lang_correct = flavor_text.language.name == lang_name
-            if is_lang_correct or not text:
-                if not version_name or any(v.name == version_name for v in flavor_text.version_group.versions):
-                    text = flavor_text.flavor_text
-                    if is_lang_correct:
-                        break
+        version_name = _extract_name(phrase, self.version_names)
+        text = self._get_flavor_text(abil.flavor_text_entires, version_name)
         if text:
             self.speak_dialog("ability.flavor.text", {"ability": self._get_name_from_lang(abil.names),
                                                       "info": text})
@@ -809,15 +851,7 @@ class PokemonSkill(CommonQuerySkill):  # TODO Use CommonQuerySkill
                                "version": self._get_name_from_lang(ability_version.names)})
 
     def do_ability_effect_entry(self, abil, short=True):
-        key = "short_effect" if short else "effect"
-        text = None
-        lang_name = self._get_lang()[0]
-        for effect_entry in abil.effect_entries:
-            is_correct_lang = effect_entry.language.name == lang_name
-            if is_correct_lang or not text:
-                text = attr(effect_entry, key)
-                if is_correct_lang:
-                    break
+        text = self._get_effect_entry(abil.effect_entries, short=short)
         if not text:
             raise Exception("The ability didn't have effect_entries? ability.effect_entries: "
                             + str(abil.effect_entries))
