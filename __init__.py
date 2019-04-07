@@ -307,8 +307,10 @@ class PokemonSkill(CommonQuerySkill):
         held_item = evolution_details["held_item"]
         held_item_display = ""
         if held_item:
+            item_name = held_item["name"]
+            item_display_name = self._get_name_from_lang(item(item_name).names)
             held_item_display = " " + self.translate("evolve.details.holding.item",
-                                                     {"name": self._get_name_from_lang(item(held_item["name"]).names)})
+                                                     {"item": item_display_name})
 
         min_level = evolution_details["min_level"]  # None or min level
         min_level_display = ""
@@ -389,6 +391,12 @@ class PokemonSkill(CommonQuerySkill):
                 assert relative_stats == 1
                 relative_stats_display = " " + self.translate("evolve.details.stats.attack.greater.than.defense")
 
+        party_species = evolution_details["party_species"]
+        party_species_display = ""
+        if party_species:
+            species_name = self._species_name(pokemon_species(party_species["name"]))
+            party_species_display = " " + self.translate("evolve.details.with.pokemon.party", {"pokemon": species_name})
+
         # ==== different triggers ====
         if trigger.name == "shed":
             return trigger_name
@@ -415,7 +423,7 @@ class PokemonSkill(CommonQuerySkill):
         return (level_up_display + held_item_display + known_move_display + known_move_type_display
                 + min_happiness_display + min_beauty_display + min_affection_display + time_display + location_display
                 + needs_rain_display + gender_display + relative_stats_display + party_type_display
-                + turn_upside_down_display)
+                + party_species_display + turn_upside_down_display)
 
     def _extract_pokemon(self, message):
         name = _extract_name(message, self.pokemon_names)
@@ -489,7 +497,7 @@ class PokemonSkill(CommonQuerySkill):
             if self.voc_match(phrase, "Pokemon") and self.last_pokemon:
                 return phrase, CQSMatchLevel.EXACT, ("pokemon", None)
             elif any(self.voc_match(phrase, vocab) for vocab in ["Evolve", "CaptureRate"]):
-                return phrase, CQSMatchLevel.CATEGORY if self.has_pokemon_context else CQSMatchLevel.GENERAL, \
+                return phrase, CQSMatchLevel.CATEGORY if self.has_context else CQSMatchLevel.GENERAL, \
                        True, ("pokemon", None)
             else:
                 if self.has_context:
