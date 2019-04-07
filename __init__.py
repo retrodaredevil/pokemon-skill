@@ -8,7 +8,7 @@ from mycroft.skills.core import MycroftSkill, intent_handler
 from mycroft.skills.common_query_skill import CommonQuerySkill, CQSMatchLevel
 from mycroft.util.log import LOG
 from pokebase import pokemon, APIResourceList, pokemon_species, evolution_trigger, item, type_, location, ability, \
-    version
+    version, move
 
 __author__ = "retrodaredevil"
 
@@ -302,50 +302,42 @@ class PokemonSkill(CommonQuerySkill):
         trigger = evolution_trigger(evolution_details["trigger"]["name"])
         trigger_name = self._get_name_from_lang(trigger.names)
         if trigger_name:
-            # trigger_name = " by " + trigger_name
             trigger_name = " " + self.translate("evolve.details.trigger", {"name": trigger_name})
 
         held_item = evolution_details["held_item"]
         held_item_display = ""
         if held_item:
-            # held_item_display = " by holding " + self._get_name_from_lang(item(held_item["name"]).names)
             held_item_display = " " + self.translate("evolve.details.holding.item",
                                                      {"name": self._get_name_from_lang(item(held_item["name"]).names)})
 
         min_level = evolution_details["min_level"]  # None or min level
         min_level_display = ""
         if min_level:
-            # min_level_display = " at level " + str(min_level)
             min_level_display = " " + self.translate("evolve.details.at.level", {"level": min_level})
 
         min_happiness = evolution_details["min_happiness"]  # None or min happiness
         min_happiness_display = ""
         if min_happiness:
-            # min_happiness_display = " with happiness " + str(min_happiness)
             min_happiness_display = " " + self.translate("evolve.details.with.happiness", {"happiness": min_happiness})
 
         min_beauty = evolution_details["min_beauty"]
         min_beauty_display = ""
         if min_beauty:
-            # min_beauty_display = " with beauty level " + str(min_beauty)
             min_beauty_display = " " + self.translate("evolve.details.with.beauty", {"beauty": min_beauty})
 
         min_affection = evolution_details["min_affection"]
         min_affection_display = ""
         if min_affection:
-            # min_affection_display = " with affection level " + str(min_affection)
             min_affection_display = " " + self.translate("evolve.details.with.affection", {"affection": min_affection})
 
         time_of_day = evolution_details["time_of_day"]  # None or "day" or "night"
         time_display = ""
         if time_of_day:
-            # time_display = " at " + time_of_day
             time_display = " " + self.translate("evolve.details.time.of.day", {"time": time_of_day})
 
         gender = evolution_details["gender"]  # None, 1=female, 2=male
         gender_display = ""
         if gender:
-            # gender_display = " if " + ("female" if gender == 1 else "male")
             if gender == 1:
                 gender_display = " " + self.translate("evolve.details.if.female")
             else:
@@ -355,7 +347,6 @@ class PokemonSkill(CommonQuerySkill):
         party_type_display = ""  # must have this type of pokemon in their party
         if party_type_dict:
             party_type = type_(party_type_dict["name"])
-            # party_type_display = " with " + self._get_name_from_lang(party_type.names) + " type pokemon in party"
             party_type_display = " " + self.translate("evolve.details.with.pokemon.party.type",
                                                       {"type": self._get_name_from_lang(party_type.names)})
 
@@ -363,13 +354,11 @@ class PokemonSkill(CommonQuerySkill):
         location_display = ""
         if location_dict:
             game_location = location(location_dict["name"])
-            # location_display = " at " + self._get_name_from_lang(game_location.names)
             location_display = " " + self.translate("evolve.details.location",
                                                     {"location": self._get_name_from_lang(game_location.names)})
 
         needs_rain_display = ""
         if evolution_details["needs_overworld_rain"]:
-            # needs_rain_display = " while it's raining"
             needs_rain_display = " " + self.translate("evolve.details.with.rain")
 
         turn_upside_down_display = ""
@@ -379,14 +368,14 @@ class PokemonSkill(CommonQuerySkill):
         known_move = evolution_details["known_move"]
         known_move_display = ""
         if known_move:
-            known_move_display = self.translate("evolve.details.knowing.move",
-                                                {"move": self._get_name_from_lang(known_move.names)})
+            known_move_display = " " + self.translate("evolve.details.knowing.move",
+                                                      {"move": self._get_name_from_lang(move(known_move["name"]).names)})
 
         known_move_type = evolution_details["known_move_type"]
         known_move_type_display = ""
         if known_move_type:
-            known_move_type_display = self.translate("evolve.details.knowing.move.type",
-                                                     {"type": self._get_name_from_lang(known_move_type.names)})
+            known_move_type_display = " " + self.translate("evolve.details.knowing.move.type",
+                                                           {"type": self._get_name_from_lang(type_(known_move_type["name"]).names)})
 
         relative_stats = evolution_details["relative_physical_stats"]
         relative_stats_display = ""
@@ -411,13 +400,12 @@ class PokemonSkill(CommonQuerySkill):
             trade_species_display = ""
             if trade_species_dict:
                 trade_species = pokemon_species(trade_species_dict["name"])
-                # trade_species_display = " for " + self._get_name_from_lang(trade_species.names)
                 trade_species_display = " " + self.translate("evolve.details.trade.species",
                                                              {"species": self._get_name_from_lang(trade_species.names)})
             return trigger_name + held_item_display + trade_species_display
 
         if trigger.name != "level-up":
-            LOG.err("This is bad! trigger.name should be level-up but it's: {}".format(trigger.name))
+            LOG.error("This is bad! trigger.name should be level-up but it's: {}".format(trigger.name))
 
         # === level up trigger below ===
         level_up_display = trigger_name
@@ -485,10 +473,8 @@ class PokemonSkill(CommonQuerySkill):
         return abil
 
     @property
-    def has_pokemon_context(self):
-        if not self.last_context_time or self.last_context_time + 45 < time.time():
-            return False
-        return bool(self.last_pokemon)
+    def has_context(self):
+        return self.last_context_time and self.last_context_time + 15 >= time.time()
 
     def reset_all_context(self):
         self.last_pokemon = None
@@ -506,7 +492,7 @@ class PokemonSkill(CommonQuerySkill):
                 return phrase, CQSMatchLevel.CATEGORY if self.has_pokemon_context else CQSMatchLevel.GENERAL, \
                        True, ("pokemon", None)
             else:
-                if self.has_pokemon_context:
+                if self.has_context:
                     if any(self.voc_match(phrase, vocab) for vocab in ["Height", "Weight", "Type", "Form", "Attack",
                                                                        "Defense", "Special", "Color", "Egg",
                                                                        "Happiness"]):
@@ -708,14 +694,15 @@ class PokemonSkill(CommonQuerySkill):
     def do_pokemon_evolve_previous(self, mon):
         previous_chain = find_species_chain(mon.species.evolution_chain.chain, mon.species.name)[0]
         how = ""
-        for evolution in attr(previous_chain, "evolves_to"):
-            if attr(evolution, "species.name") == mon.species.name:
-                details_list = attr(evolution, "evolution_details")
-                how_str_list = []
-                for details in details_list:
-                    how_str_list.append(self._evolution_details_str(details))
-                how = self._list_to_str(how_str_list)
-                break
+        if previous_chain:
+            for evolution in attr(previous_chain, "evolves_to"):
+                if attr(evolution, "species.name") == mon.species.name:
+                    details_list = attr(evolution, "evolution_details")
+                    how_str_list = []
+                    for details in details_list:
+                        how_str_list.append(self._evolution_details_str(details))
+                    how = self._list_to_str(how_str_list)
+                    break
         previous_species = mon.species.evolves_from_species
         pokemon_name = self._pokemon_name(mon)
         if not previous_species:
