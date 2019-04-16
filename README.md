@@ -19,7 +19,8 @@ With this skill, you can ask Mycroft many different facts about Pokemon. The thi
 * "How effective is a ground move against Pikachu?"
 * "What generation was Pichu introduced in?"
 * "What abilities does Pikachu have?"
-* "What does the pokedex say about the static ability in emerald?"
+* "What is Static's flavor text in emerald"
+* "What is Intimidate's flavor text in diamond"
 * "Give me some info about the ability Static"
 * "Give me some detailed information about the ability Static"
 * "What generation was Static first introduced?"
@@ -30,8 +31,8 @@ Joshua Shannon (@retrodaredevil)
 
 
 ## Category
-Entertainment
-**Information**
+**Entertainment**
+Information
 
 ## Tags
 #Pokemon

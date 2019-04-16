@@ -32,7 +32,7 @@ def _extract_name(message, names):
         equalities = []
         for s in split:
             name_compare_word = split_name[name_index]
-            equality = SequenceMatcher(None, name_compare_word, s).ratio()
+            equality = SequenceMatcher(None, name_compare_word.lower(), s.lower()).ratio()
             if equality > .9:
                 equalities.append(equality)
                 name_index += 1
@@ -298,6 +298,7 @@ class PokemonSkill(CommonQuerySkill):
         :param evolution_details: Usually a dict
         :return: A string representing events needed to happen to evolve based on evolution_details
         """
+        # Use this to test: https://pokemondb.net/pokebase/168028/what-pokemon-have-a-unique-evolution-method
         # ==== variables ====
         trigger = evolution_trigger(evolution_details["trigger"]["name"])
         trigger_name = self._get_name_from_lang(trigger.names)
@@ -385,7 +386,6 @@ class PokemonSkill(CommonQuerySkill):
             if relative_stats == -1:
                 relative_stats_display = " " + self.translate("evolve.details.stats.attack.less.than.defense")
             elif relative_stats == 0:
-                pass
                 relative_stats_display = " " + self.translate("evolve.details.stats.attack.equals.defense")
             else:
                 assert relative_stats == 1
@@ -898,7 +898,7 @@ class PokemonSkill(CommonQuerySkill):
 
     def do_ability_flavor_text(self, abil, phrase):
         version_name = _extract_name(phrase, self.version_names)
-        text = self._get_flavor_text(abil.flavor_text_entires, version_name)
+        text = self._get_flavor_text(abil.flavor_text_entries, version_name)
         if text:
             self.speak_dialog("ability.flavor.text", {"ability": self._get_name_from_lang(abil.names),
                                                       "info": text})
