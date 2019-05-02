@@ -1,1 +1,1 @@
-{pokemon} has hidden ability: {hidden_abilities}
+{pokemon} has hidden ability {hidden_abilities}

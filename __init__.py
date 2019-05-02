@@ -197,7 +197,7 @@ class PokemonSkill(CommonQuerySkill):
             return l[0]
         if not and_str:
             and_str = self.translate("and")
-        return ", ".join(l[:-1]) + ", " + and_str + ". " + l[-1]
+        return ", ".join(l[:-1]) + ", " + and_str + " " + l[-1]
 
     def _use_english_units(self, phrase):
         """
@@ -747,7 +747,7 @@ class PokemonSkill(CommonQuerySkill):
             self.speak_dialog("pokemon.does.not.evolve", {"pokemon": pokemon_name})
             return
 
-        display = self._list_to_str(names_into, and_str=self.translate(". or ."))
+        display = self._list_to_str(names_into, and_str=self.translate("or"))
 
         self.speak_dialog("pokemon.evolves.into", {"pokemon": pokemon_name,
                                                    "evolve": display})
