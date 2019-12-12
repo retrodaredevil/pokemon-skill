@@ -1,4 +1,4 @@
-# <img src='https://newvitruvian.com/images/pokeball-clipart-3.png' card_color='#40DBB0' width='50' style='vertical-align:bottom'/> Pokemon 
+# <img src='https://cdn.pixabay.com/photo/2016/07/23/13/18/pokemon-1536849_960_720.png' card_color='#40DBB0' width='50' style='vertical-align:bottom'/> Pokemon 
 Aids you on your journey as a Pokemon Trainer
 
 ## About 
